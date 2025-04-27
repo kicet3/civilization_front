@@ -1,41 +1,63 @@
 import React from 'react';
-import { TurnPhase } from '@/types/game';
+import { useGame } from '../../context/GameContext';
+import { Sword } from 'lucide-react';
 
 interface TurnTabProps {
-  currentTurn: number;
-  currentPhase: TurnPhase;
-  onEndTurn: () => void;
-  onNextPhase: () => void;
+  onEndTurn: () => Promise<void>;
 }
 
-const TurnTab: React.FC<TurnTabProps> = ({
-  currentTurn,
-  currentPhase,
-  onEndTurn,
-  onNextPhase
-}) => {
+export default function TurnTab({ onEndTurn }: TurnTabProps) {
+  const { gameState, isLoading } = useGame();
+  
+  const handleEndTurn = async () => {
+    if (isLoading) return;
+    await onEndTurn();
+  };
+  
   return (
-    <div className="p-4">
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-xl font-bold">턴 {currentTurn}</h2>
-        <span className="text-sm text-gray-600">단계: {currentPhase}</span>
-      </div>
-      <div className="flex gap-4">
-        <button
-          onClick={onNextPhase}
-          className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-        >
-          다음 단계
-        </button>
-        <button
-          onClick={onEndTurn}
-          className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600"
-        >
-          턴 종료
-        </button>
+    <div className="p-4 text-white">
+      <h2 className="text-2xl font-bold mb-6">턴 관리</h2>
+      
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="bg-slate-800 p-4 rounded-md">
+          <h3 className="text-xl mb-4">현재 턴 정보</h3>
+          <div className="space-y-2 mb-6">
+            <p className="flex justify-between">
+              <span>턴 번호:</span>
+              <span className="font-bold">{gameState?.turn || 1}</span>
+            </p>
+            <p className="flex justify-between">
+              <span>년도:</span>
+              <span className="font-bold">
+                {gameState?.year && gameState.year < 0 
+                  ? `BC ${Math.abs(gameState.year)}` 
+                  : `AD ${gameState?.year || 0}`}
+              </span>
+            </p>
+          </div>
+          
+          <div className="mt-8">
+            <button
+              onClick={handleEndTurn}
+              disabled={isLoading}
+              className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 rounded-md flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Sword className="mr-2" size={20} />
+              <span className="font-bold">턴 종료</span>
+            </button>
+            {isLoading && (
+              <p className="text-center mt-2 text-slate-400">처리 중...</p>
+            )}
+          </div>
+        </div>
+        
+        <div className="bg-slate-800 p-4 rounded-md">
+          <h3 className="text-xl mb-4">이벤트</h3>
+          <div className="h-64 overflow-y-auto bg-slate-900 p-3 rounded-md">
+            <p className="text-gray-400">이번 턴에는 특별한 이벤트가 없습니다.</p>
+          </div>
+        </div>
       </div>
     </div>
   );
-};
-
-export default TurnTab; 
+} 

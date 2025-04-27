@@ -1,7 +1,8 @@
-import { HexTile } from '@/services/gameService';
+import { HexTile } from '@/types/game';
 
 // 육각형 크기 상수
-const HEX_SIZE = 30; // 육각형의 반지름
+const HEX_SIZE = 32; // 육각형의 반지름 (조금 더 크게 조정)
+const SPACING_FACTOR = 1.0; // 타일 간격 조정 (1.0 = 정확히 붙어있음)
 
 // 육각형 위치 계산 함수
 export const calculateHexPosition = (
@@ -10,9 +11,11 @@ export const calculateHexPosition = (
   offset: { x: number, y: number }, 
   scale: number
 ): { x: number, y: number } => {
-  // 큐브 좌표를 픽셀 좌표로 변환
-  const x = (Math.sqrt(3) * q + Math.sqrt(3) / 2 * r) * HEX_SIZE * scale + offset.x;
-  const y = (3 / 2 * r) * HEX_SIZE * scale + offset.y;
+  // 큐브 좌표를 픽셀 좌표로 변환 (적절한 간격 유지)
+  // 수평 간격: √3 * size
+  // 수직 간격: 3/2 * size
+  const x = (Math.sqrt(3) * q + Math.sqrt(3) / 2 * r) * (HEX_SIZE * SPACING_FACTOR) * scale + offset.x;
+  const y = (3 / 2 * r) * (HEX_SIZE * SPACING_FACTOR) * scale + offset.y;
   
   return { x, y };
 };
@@ -103,18 +106,24 @@ export const getHexAtPoint = (
   offset: { x: number, y: number }, 
   scale: number
 ): HexTile | null => {
-  // 클릭 좌표를 육각형 좌표로 변환
-  const q = (Math.sqrt(3) / 3 * x - 1 / 3 * y) / (HEX_SIZE * scale);
-  const r = (2 / 3 * y) / (HEX_SIZE * scale);
+  // 오프셋 적용된 좌표 계산
+  const adjustedX = x - offset.x;
+  const adjustedY = y - offset.y;
   
   // 가장 가까운 육각형 찾기
   let closestHex: HexTile | null = null;
   let minDistance = Infinity;
   
   hexagons.forEach(hex => {
-    const hexPos = calculateHexPosition(hex.q, hex.r, offset, scale);
+    // 탐색되지 않은 타일은 클릭 불가능하게 함
+    if (hex.exploration === 'unexplored') {
+      return;
+    }
+    
+    const hexPos = calculateHexPosition(hex.q, hex.r, { x: 0, y: 0 }, scale);
+    // 오프셋 적용한 위치와의 거리 계산
     const distance = Math.sqrt(
-      Math.pow(x - hexPos.x, 2) + Math.pow(y - hexPos.y, 2)
+      Math.pow(adjustedX - hexPos.x, 2) + Math.pow(adjustedY - hexPos.y, 2)
     );
     
     if (distance < minDistance) {
@@ -123,8 +132,8 @@ export const getHexAtPoint = (
     }
   });
   
-  // 일정 거리 내에 있는 경우에만 반환
-  return minDistance < HEX_SIZE * scale ? closestHex : null;
+  // 일정 거리 내에 있는 경우에만 반환 (클릭 허용 범위가 스케일에 비례)
+  return minDistance < HEX_SIZE * scale * 1.2 ? closestHex : null;
 };
 
 // 인접한 육각형 찾기
@@ -144,17 +153,23 @@ export const getAdjacentHexes = (
   ];
   
   // 각 방향에 있는 인접 육각형 찾기
-  return directions
-    .map(dir => {
-      const adjQ = q + dir.q;
-      const adjR = r + dir.r;
-      const adjS = -adjQ - adjR; // 큐브 좌표 제약 조건: q + r + s = 0
-      
-      return hexagons.find(hex => 
-        hex.q === adjQ && hex.r === adjR && hex.s === adjS
-      );
-    })
-    .filter((hex): hex is HexTile => hex !== undefined);
+  const adjacentHexes: HexTile[] = [];
+  
+  directions.forEach(dir => {
+    const adjQ = q + dir.q;
+    const adjR = r + dir.r;
+    
+    // s는 생략 가능 (일부 타일은 s 값이 없을 수 있음)
+    const adjacentHex = hexagons.find(hex => 
+      hex.q === adjQ && hex.r === adjR
+    );
+    
+    if (adjacentHex) {
+      adjacentHexes.push(adjacentHex);
+    }
+  });
+  
+  return adjacentHexes;
 };
 
 export const calculateDistance = (hex1: HexTile, hex2: HexTile): number => {

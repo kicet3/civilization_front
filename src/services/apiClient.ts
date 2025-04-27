@@ -5,7 +5,7 @@ import { ApiResponse } from "@/types";
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
 const API_TIMEOUT = parseInt(
-  process.env.NEXT_PUBLIC_API_TIMEOUT || "10000",
+  process.env.NEXT_PUBLIC_API_TIMEOUT || "600000",
   10
 );
 const TOKEN_STORAGE_KEY =
@@ -170,20 +170,30 @@ class ApiClient {
   private handleError(error: any): Error {
     if (error.response) {
       // 서버에서 응답이 왔지만 에러 상태 코드인 경우
-      const message = error.response.data?.message || error.response.data?.detail || '서버 오류가 발생했습니다.';
+      console.error('서버 응답 에러:', error.response.data);
+      console.error('상태 코드:', error.response.status);
+      console.error('헤더:', error.response.headers);
+      
+      // 백엔드에서 받은 에러 메시지를 우선 사용
+      const message = 
+        error.response.data?.message || 
+        error.response.data?.detail || 
+        error.response.data?.error || 
+        `서버 오류가 발생했습니다. (${error.response.status})`;
+        
       return new Error(message);
     }
     if (error.request) {
       // 요청은 보냈지만 응답이 없는 경우
-      return new Error('서버에 연결할 수 없습니다.');
+      console.error('응답 없음:', error.request);
+      return new Error('서버에 연결할 수 없습니다. 네트워크 연결을 확인해주세요.');
     }
     // 요청 설정 중 오류가 발생한 경우
+    console.error('요청 설정 오류:', error.message);
     return new Error(error.message || '요청 중 오류가 발생했습니다.');
   }
 }
 
 // API 클라이언트 인스턴스 생성 및 내보내기
 const apiClient = new ApiClient();
-export default apiClient; 
-
-
+export default apiClient;

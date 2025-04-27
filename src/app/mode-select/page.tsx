@@ -107,32 +107,75 @@ export default function GameModeSelect() {
     try {
       console.log('startGame 함수 실행 시작');
       setIsLoading(true);
+      setErrorMessage(''); // 기존 에러 메시지 초기화
       
       console.log('게임 시작 - 사용자 이름:', userName);
       
-      // map/init API 호출 - snake_case로 백엔드와 맞춤
-      const mapConfig = {
-        user_name: userName
+      // 전체 게임 설정을 포함한 맵 초기화 요청
+      const gameConfig = {
+        user_name: userName,  // snake_case로 백엔드와 맞춤
+        game_mode: selectedMode || 'short',
+        difficulty: selectedDifficulty || 'easy',
+        civilization: selectedCivilization || 'korea',
+        map_type: selectedMapType || 'small_continents',
+        civ_count: selectedCivCount || 6,
+        map_radius: 5,  // 기본값 추가
+        turn_limit: 50  // 기본값 추가
       };
-      console.log('전송할 데이터:', mapConfig);
       
-      const response = await gameService.initMap(mapConfig);
+      console.log('전송할 전체 설정:', gameConfig);
       
-      if (response.success) {
-        // 게임 ID를 로컬 스토리지에 저장
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('current_game_id', response.data?.game_id || '');
+      try {
+        const response = await gameService.initMap(gameConfig);
+        
+        if (response.success && response.data?.game_id) {
+          // 게임 ID를 로컬 스토리지에 저장
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('current_game_id', response.data.game_id);
+          }
+          
+          // 게임 페이지로 이동
+          router.push('/game');
+        } else {
+          setErrorMessage(response.message || '게임 초기화 중 오류가 발생했습니다.');
+          console.error('게임 초기화 실패:', response);
+        }
+      } catch (error: any) {
+        console.error('API 호출 에러:', error);
+        
+        // 에러 상세 정보 처리
+        let detailedError = '게임 초기화 중 오류가 발생했습니다.';
+        
+        if (error.response) {
+          // 서버 응답이 있는 경우
+          console.error('서버 응답:', error.response.data);
+          
+          // FastAPI validation 에러 처리
+          if (Array.isArray(error.response.data?.detail)) {
+            const validationErrors = error.response.data.detail.map((err: any) => {
+              return `${err.loc.join(' -> ')}: ${err.msg}`;
+            }).join(', ');
+            detailedError = `입력값 오류: ${validationErrors}`;
+          } else if (error.response.data?.detail) {
+            detailedError = error.response.data.detail;
+          } else if (error.response.data?.message) {
+            detailedError = error.response.data.message;
+          }
+        } else if (error.request) {
+          // 요청은 보냈지만 응답이 없는 경우
+          detailedError = '서버 연결에 실패했습니다. 서버가 실행 중인지 확인해주세요.';
+        } else {
+          // 요청 설정 중 에러가 발생한 경우
+          detailedError = error.message || '알 수 없는 오류가 발생했습니다.';
         }
         
-        // 게임 페이지로 이동
-        router.push('/game');
-      } else {
-        setErrorMessage(response.message || '게임 초기화 중 오류가 발생했습니다.');
-        setIsLoading(false);
+        setErrorMessage(detailedError);
       }
+      
+      setIsLoading(false);
     } catch (error) {
-      console.error('게임 초기화 중 오류 발생:', error);
-      setErrorMessage('게임 초기화 중 오류가 발생했습니다. 다시 시도해 주세요.');
+      console.error('게임 초기화 중 예기치 않은 오류 발생:', error);
+      setErrorMessage('게임 초기화 중 예기치 않은 오류가 발생했습니다.');
       setIsLoading(false);
     }
   };

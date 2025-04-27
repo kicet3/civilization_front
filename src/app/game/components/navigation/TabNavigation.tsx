@@ -18,13 +18,13 @@ export default function TabNavigation({
     { id: 'research', icon: IndentIncrease, label: '연구' },
     { id: 'units', icon: User, label: '유닛' },
     { id: 'construction', icon: Building, label: '건설' },
-    { id: 'turn', icon: Sword, label: '턴' },
     { id: 'diplomacy', icon: Globe, label: '외교' },
+    { id: 'turn', icon: Sword, label: '턴' },
   ];
 
   return (
     <>
-      {tabs.map(({ id, icon: Icon }) => (
+      {tabs.map(({ id, icon: Icon, label }) => (
         <button
           key={id}
           className={cn(
@@ -32,6 +32,7 @@ export default function TabNavigation({
             selectedTab === id ? 'bg-indigo-600' : 'bg-slate-700 hover:bg-slate-600'
           )}
           onClick={() => onTabChange(id)}
+          title={label}
         >
           <Icon size={24} />
         </button>

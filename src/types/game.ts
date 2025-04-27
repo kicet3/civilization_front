@@ -90,8 +90,9 @@ export interface HexTile {
   occupant?: string;
   city_id?: string;
   unit_id?: string;
-  visible: boolean;
-  explored: boolean;
+  exploration: 'visible' | 'explored' | 'unexplored'; // 시야 상태: 현재 보임, 탐색됨, 미탐색
+  visible?: boolean; // 이전 버전과의 호환성을 위해 유지
+  explored?: boolean; // 이전 버전과의 호환성을 위해 유지
   movementCost?: number;
   yields?: YieldValues;
   city?: {
@@ -183,9 +184,19 @@ export interface Unit {
 // 연구 상태 타입
 export interface ResearchState {
   science: number;
-  progress: number;
-  currentTechId: string | null;
-  researchedTechIds: string[];
+  gameCivId?: number; // 플레이어 문명 ID
+  current?: {
+    techId: number;
+    points: number;
+    required: number;
+  };
+  completed: number[];
+  available: number[];
+  queue?: ResearchQueueEntry[];
+  treeSelection?: {
+    main: string;
+    sub: string;
+  };
 }
 
 // 정책 상태 타입
@@ -215,6 +226,31 @@ export interface GameEvent {
   content: string;
   turn: number;
   importance?: 'low' | 'medium' | 'high';
+}
+
+// 기술(Technology) 타입
+export interface Technology {
+  id: number;
+  name: string;
+  description: string;
+  era: 'Medieval' | 'Industrial' | 'Modern';
+  treeType: string;
+  researchCost: number;
+  researchTimeModifier: number;
+  icon?: string;
+  unlocks?: string[]; // 해금되는 유닛, 건물 등
+  position?: {
+    x: number;
+    y: number;
+  };
+  prerequisites?: number[]; // 선행 기술 ID 목록
+}
+
+// 연구 큐 엔트리 타입
+export interface ResearchQueueEntry {
+  queueId: number;
+  techId: number;
+  queuePosition: number;
 }
 
 // 로그 아이템 타입

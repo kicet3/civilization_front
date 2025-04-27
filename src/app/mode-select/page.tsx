@@ -8,6 +8,7 @@ import {
   Save, Loader2, XCircle, CheckCircle, Lock, Database, School, Castle, BookOpen, Milestone, Mountain,
   Crown, GraduationCap, Library, Landmark, Shell, Ship, Sparkles
 } from 'lucide-react';
+import { gameService } from '@/services';
 
 export default function GameModeSelect() {
   const router = useRouter();
@@ -95,10 +96,44 @@ export default function GameModeSelect() {
   };
 
   const goToNextStep = () => {
-    if (step < 5) {
+    console.log('goToNextStep 호출, 현재 단계:', step);
+    if (step < 6) {
       setStep(step + 1);
-    } else {
-      router.push('/game');
+    }
+  };
+
+  // 게임 초기화 및 시작
+  const startGame = async () => {
+    try {
+      console.log('startGame 함수 실행 시작');
+      setIsLoading(true);
+      
+      console.log('게임 시작 - 사용자 이름:', userName);
+      
+      // map/init API 호출 - snake_case로 백엔드와 맞춤
+      const mapConfig = {
+        user_name: userName
+      };
+      console.log('전송할 데이터:', mapConfig);
+      
+      const response = await gameService.initMap(mapConfig);
+      
+      if (response.success) {
+        // 게임 ID를 로컬 스토리지에 저장
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('current_game_id', response.data?.game_id || '');
+        }
+        
+        // 게임 페이지로 이동
+        router.push('/game');
+      } else {
+        setErrorMessage(response.message || '게임 초기화 중 오류가 발생했습니다.');
+        setIsLoading(false);
+      }
+    } catch (error) {
+      console.error('게임 초기화 중 오류 발생:', error);
+      setErrorMessage('게임 초기화 중 오류가 발생했습니다. 다시 시도해 주세요.');
+      setIsLoading(false);
     }
   };
 
@@ -120,7 +155,7 @@ export default function GameModeSelect() {
   // 현재 단계에 따른 버튼 텍스트
   const getNextButtonText = () => {
     if (loadGameMode) return '선택한 게임 불러오기';
-    if (step === 5) return '게임 시작';
+    if (step === 6) return '게임 시작';
     return '다음';
   };
 
@@ -129,11 +164,12 @@ export default function GameModeSelect() {
     if (loadGameMode) return userName && password;
     
     switch (step) {
-      case 1: return !!selectedMode;
-      case 2: return !!selectedDifficulty;
-      case 3: return !!selectedCivilization;
-      case 4: return !!selectedMapType;
-      case 5: return !!selectedCivCount;
+      case 1: return !!userName;
+      case 2: return !!selectedMode;
+      case 3: return !!selectedDifficulty;
+      case 4: return !!selectedCivilization;
+      case 5: return !!selectedMapType;
+      case 6: return !!selectedCivCount;
       default: return false;
     }
   };
@@ -274,9 +310,32 @@ export default function GameModeSelect() {
       return renderLoadGame();
     }
     
-   // 새 게임 시작 화면 (5단계)
+   // 새 게임 시작 화면 (6단계)
    switch (step) {
     case 1:
+      return (
+        <div className="w-full max-w-4xl mx-auto">
+          <h2 className="text-3xl font-bold mb-8 text-center">사용자 이름 입력</h2>
+          <div className="bg-slate-800 rounded-lg p-6 mb-6">
+            <p className="text-gray-400 mb-6">게임에서 사용할 사용자 이름을 입력하세요.</p>
+            
+            <div className="space-y-4">
+              <div>
+                <label htmlFor="userName" className="block text-sm font-medium text-gray-300 mb-1">사용자 이름</label>
+                <input 
+                  type="text" 
+                  id="userName" 
+                  value={userName} 
+                  onChange={(e) => setUserName(e.target.value)} 
+                  className="w-full px-4 py-2 bg-slate-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-white"
+                  placeholder="사용자 이름 입력"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    case 2:
       return (
         <div className="w-full max-w-5xl mx-auto">
           <h2 className="text-3xl font-bold mb-8 text-center">게임 모드 선택</h2>
@@ -309,7 +368,7 @@ export default function GameModeSelect() {
           </div>
         </div>
       );
-    case 2:
+    case 3:
       return (
         <div className="w-full max-w-5xl mx-auto">
           <h2 className="text-3xl font-bold mb-8 text-center">난이도 선택</h2>
@@ -332,7 +391,7 @@ export default function GameModeSelect() {
           </div>
         </div>
       );
-    case 3:
+    case 4:
       return (
         <div className="w-full max-w-5xl mx-auto">
           <h2 className="text-3xl font-bold mb-8 text-center">문명 선택</h2>
@@ -366,7 +425,7 @@ export default function GameModeSelect() {
           </div>
         </div>
       );
-    case 4:
+    case 5:
       return (
         <div className="w-full max-w-4xl mx-auto">
           <h2 className="text-3xl font-bold mb-4 text-center">지도 유형 선택</h2>
@@ -396,7 +455,7 @@ export default function GameModeSelect() {
           </div>
         </div>
       );
-    case 5:
+    case 6:
       return (
         <div className="w-full max-w-4xl mx-auto">
           <h2 className="text-3xl font-bold mb-8 text-center">문명 수 선택</h2>
@@ -427,16 +486,22 @@ export default function GameModeSelect() {
 };
 
 const handleNextButtonClick = () => {
+  console.log('handleNextButtonClick 호출, 현재 단계:', step, '로드 게임 모드:', loadGameMode);
   if (loadGameMode) {
     // 로딩 상태 토글 (실제로는 API 요청이 아님)
     setIsLoading(!isLoading);
+  } else if (step === 6) {
+    // 마지막 단계에서는 직접 startGame 호출
+    console.log('마지막 단계에서 startGame 직접 호출');
+    startGame();
   } else {
+    console.log('handleNextButtonClick에서 goToNextStep 호출');
     goToNextStep();
   }
 };
 
 return (
-  <div className="min-h-screen bg-gradient-to-b from-slate-900 to-slate-800 text-white">
+  <div className="min-h-screen flex flex-col bg-gradient-to-b from-slate-900 to-slate-800 text-white">
     {/* 헤더 영역 */}
     <header className="w-full p-4 flex items-center">
       <button 
@@ -455,7 +520,7 @@ return (
     {!loadGameMode && !showInitialChoice && (
       <div className="w-full max-w-4xl mx-auto py-6 px-4">
         <div className="flex items-center justify-between mb-8 relative">
-          {[1, 2, 3, 4, 5].map((stepNumber) => (
+          {[1, 2, 3, 4, 5, 6].map((stepNumber) => (
             <div key={stepNumber} className="flex flex-col items-center z-10">
               <div className={cn(
                 "w-10 h-10 rounded-full flex items-center justify-center font-bold",
@@ -468,11 +533,12 @@ return (
                 {stepNumber}
               </div>
               <span className="text-xs mt-1 text-gray-400">
-                {stepNumber === 1 && '게임 모드'}
-                {stepNumber === 2 && '난이도'}
-                {stepNumber === 3 && '문명'}
-                {stepNumber === 4 && '지도 유형'}
-                {stepNumber === 5 && '문명 수'}
+                {stepNumber === 1 && '사용자 이름'}
+                {stepNumber === 2 && '게임 모드'}
+                {stepNumber === 3 && '난이도'}
+                {stepNumber === 4 && '문명'}
+                {stepNumber === 5 && '지도 유형'}
+                {stepNumber === 6 && '문명 수'}
               </span>
             </div>
           ))}
@@ -482,11 +548,21 @@ return (
     )}
 
     {/* 메인 콘텐츠 영역 */}
-    <main className="flex-1 p-4 flex flex-col items-center">
+    <main className="flex-1 p-4 pb-24 flex flex-col items-center">
       {renderStepContent()}
       
-      {/* 이전/다음 버튼 */}
-      <div className="mt-12 mb-8 w-full max-w-4xl flex justify-between">
+      {/* 에러 메시지 */}
+      {errorMessage && !loadGameMode && (
+        <div className="mt-6 p-4 bg-red-900 bg-opacity-30 border border-red-500 rounded-md text-center text-red-300 flex items-center justify-center max-w-md">
+          <XCircle size={20} className="mr-2" />
+          {errorMessage}
+        </div>
+      )}
+    </main>
+    
+    {/* 고정된 푸터 영역 */}
+    <footer className="fixed bottom-0 left-0 right-0 bg-gradient-to-r from-gray-900 via-slate-900 to-gray-900 border-t border-gray-800 py-4 px-4 z-10">
+      <div className="max-w-4xl mx-auto flex justify-between items-center">
         <button
           onClick={goToPreviousStep}
           className="py-3 px-8 rounded-full font-bold flex items-center bg-gradient-to-r from-gray-600 to-gray-800 hover:from-gray-700 hover:to-gray-900 text-white transition-all"
@@ -513,7 +589,7 @@ return (
           ) : (
             <>
               {getNextButtonText()}
-              {loadGameMode || step === 5 ? (
+              {loadGameMode || step === 6 ? (
                 <PlayCircle className="ml-2" size={20} />
               ) : (
                 <ArrowLeft className="ml-2 rotate-180" size={20} />
@@ -522,7 +598,7 @@ return (
           )}
         </button>
       </div>
-    </main>
+    </footer>
   </div>
 );
 }

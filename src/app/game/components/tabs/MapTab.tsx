@@ -1,26 +1,33 @@
 import React from 'react';
-import HexMap from '../map-management/HexMap';
-import { HexTile, Unit } from '@/services/gameService';
+import HexMap from './map/HexMap';
+import { HexTile } from '@/types/game';
 
 interface MapTabProps {
-  gameId: string;
+  hexagons: HexTile[];
   selectedTile: HexTile | null;
   onTileClick: (tile: HexTile) => void;
-  onUnitMove: (unit: Unit, q: number, r: number) => void;
+  onUnitClick: (unit: any) => void;
+  onCityClick: (city: any) => void;
 }
 
-export default function MapTab({
-  gameId,
+const MapTab: React.FC<MapTabProps> = ({
+  hexagons,
   selectedTile,
   onTileClick,
-  onUnitMove
-}: MapTabProps) {
+  onUnitClick,
+  onCityClick
+}) => {
   return (
-    <HexMap 
-      gameId={gameId}
-      onTileClick={onTileClick}
-      selectedTile={selectedTile}
-      onUnitMove={onUnitMove}
-    />
+    <div className="h-full">
+      <HexMap
+        hexagons={hexagons}
+        selectedTile={selectedTile}
+        onTileClick={onTileClick}
+        onUnitClick={onUnitClick}
+        onCityClick={onCityClick}
+      />
+    </div>
   );
-} 
+};
+
+export default MapTab; 

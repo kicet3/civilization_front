@@ -1,6 +1,6 @@
 import React from 'react';
-import UnitPanel from '../unit-management/UnitPanel';
-import { Unit } from '@/services/gameService';
+import { Unit } from '@/types/game';
+import UnitPanel from './units/UnitPanel';
 
 interface UnitsTabProps {
   units: Unit[];
@@ -8,16 +8,20 @@ interface UnitsTabProps {
   onUnitCommand: (unit: Unit, command: string) => void;
 }
 
-export default function UnitsTab({
+const UnitsTab: React.FC<UnitsTabProps> = ({
   units,
   onSelectUnit,
   onUnitCommand
-}: UnitsTabProps) {
+}) => {
   return (
-    <UnitPanel 
-      units={units}
-      onSelectUnit={onSelectUnit}
-      onUnitCommand={onUnitCommand}
-    />
+    <div className="h-full">
+      <UnitPanel
+        units={units}
+        onSelectUnit={onSelectUnit}
+        onUnitCommand={onUnitCommand}
+      />
+    </div>
   );
-} 
+};
+
+export default UnitsTab; 

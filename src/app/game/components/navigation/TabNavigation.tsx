@@ -1,7 +1,7 @@
 import React from 'react';
 import { cn } from '@/lib/utils';
 import { 
-  Map, Beaker, Sword, Award, ChevronDown 
+  Map, User, Globe, IndentIncrease, Sword, Building
 } from 'lucide-react';
 
 interface TabNavigationProps {
@@ -15,10 +15,11 @@ export default function TabNavigation({
 }: TabNavigationProps) {
   const tabs = [
     { id: 'map', icon: Map, label: '지도' },
-    { id: 'research', icon: Beaker, label: '연구' },
-    { id: 'units', icon: Sword, label: '유닛' },
-    { id: 'religion', icon: Award, label: '종교' },
-    { id: 'turn', icon: ChevronDown, label: '턴' }
+    { id: 'research', icon: IndentIncrease, label: '연구' },
+    { id: 'units', icon: User, label: '유닛' },
+    { id: 'construction', icon: Building, label: '건설' },
+    { id: 'turn', icon: Sword, label: '턴' },
+    { id: 'diplomacy', icon: Globe, label: '외교' },
   ];
 
   return (

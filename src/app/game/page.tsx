@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { 
@@ -9,37 +9,30 @@ import {
   ChevronDown, User, Send, 
   Home 
 } from 'lucide-react';
-import TurnManager, { TurnPhase } from './TurnManager';
-import CityManagementPanel from "./city-management/CityManagementPanel";
-import ResearchPanel from "./research-management/ResearchPanel";
-import UnitPanel from "./unit-management/UnitPanel";
-import DiplomacyPanel from "./diplomacy-management/DiplomacyPanel";
-import ReligionPanel from "./religion-management/ReligionPanel";
-import PolicyPanel from "./policy-management/PolicyPanel";
-import HexMap from './map-management/HexMap';
-import Toast from './ui/Toast';
+import { gameService } from '@/services';
+import { ApiResponse, GameState, HexTile, Unit, City, TurnPhase } from '@/types';
 
-// 서비스 API 가져오기
-import gameService, { 
-  GameState, 
-  HexTile, 
-  Unit, 
-  City,
-  ResearchState,
-  PolicyState,
-  ReligionState,
-  DiplomacyState
-} from '@/services/gameService';
-
-// 새로 만든 컴포넌트들
+// 컴포넌트 임포트
 import GameLayout from './components/layout/GameLayout';
 import TabNavigation from './components/navigation/TabNavigation';
 import LogPanel from './components/log/LogPanel';
 import TopBar from './components/topbar/TopBar';
-import MapTab from './components/tabs/MapTab';
-import ResearchTab from './components/tabs/ResearchTab';
-import UnitsTab from './components/tabs/UnitsTab';
-import TurnTab from './components/tabs/TurnTab';
+import Toast from '@/app/game/components/ui/Toast';
+
+// 지연 로딩을 위한 탭 컴포넌트
+const MapTab = lazy(() => import('./components/tabs/MapTab'));
+const ResearchTab = lazy(() => import('./components/tabs/ResearchTab'));
+const UnitsTab = lazy(() => import('./components/tabs/UnitsTab'));
+const TurnTab = lazy(() => import('./components/tabs/TurnTab'));
+const DiplomacyTab = lazy(() => import('./components/tabs/DiplomacyTab'));
+const ConstructionTab = lazy(() => import('./components/tabs/ConstructionTab'));
+
+// 로딩 중 표시할 컴포넌트
+const TabLoadingFallback = () => (
+  <div className="flex items-center justify-center h-full">
+    <div className="text-white text-xl">로딩 중...</div>
+  </div>
+);
 
 interface LogEntry {
   type: 'system' | 'advisor' | 'event' | 'player';
@@ -106,34 +99,59 @@ export default function GamePage() {
       try {
         setIsLoading(true);
         
-        // 초기 게임 상태 설정 (로컬에서 처리)
-        const initialState = {
-          turn: 1,
-          year: -4000,
-          resources: {
-            food: 10,
-            production: 5,
-            gold: 20,
-            science: 3,
-            culture: 2,
-            faith: 1,
-            happiness: 10
-          },
-          cities: [],
-          units: []
-        };
+        // 로컬 스토리지에서 현재 게임 ID 가져오기
+        let currentGameId = '';
+        if (typeof window !== 'undefined') {
+          currentGameId = localStorage.getItem('current_game_id') || '';
+        }
         
-        setGameState(initialState);
-        setTurn(initialState.turn);
-        setYear(initialState.year);
+        if (!currentGameId) {
+          setError('게임 ID를 찾을 수 없습니다.');
+          setIsLoading(false);
+          showToast('게임 ID를 찾을 수 없습니다. 다시 시작해주세요.', 'error');
+          return;
+        }
         
-        // 맵 데이터만 가져오기
-        const { hexagons } = await gameService.getMap();
-        setMapData(hexagons);
+        // 맵 데이터 조회
+        const mapResponse = await gameService.getMapData(currentGameId);
         
-        // 초기 로그 메시지
-        addLog('system', '게임이 시작되었습니다.', initialState.turn);
-        addLog('advisor', `새로운 문명의 지도자님, 환영합니다! 이제 우리는 새로운 문명을 건설하여 역사에 이름을 남길 것입니다.`, initialState.turn);
+        if (mapResponse.success && mapResponse.data) {
+          const gameData = mapResponse.data;
+          
+          // 게임 상태 설정
+          const initialState: GameState = {
+            gameId: currentGameId,
+            turn: gameData.turn || 1,
+            year: gameData.year || -4000,
+            resources: gameData.resources || {
+              food: 10,
+              production: 5,
+              gold: 20,
+              science: 3,
+              culture: 2,
+              faith: 1,
+              happiness: 10
+            },
+            cities: gameData.cities || [],
+            units: gameData.units || []
+          };
+          
+          setGameState(initialState);
+          setTurn(initialState.turn);
+          setYear(initialState.year);
+          
+          // 맵 데이터 설정
+          if (gameData.map && gameData.map.hexagons) {
+            setMapData(gameData.map.hexagons);
+          }
+          
+          // 초기 로그 메시지
+          addLog('system', '게임이 시작되었습니다.', initialState.turn);
+          addLog('advisor', `새로운 문명의 지도자님, 환영합니다! 이제 우리는 새로운 문명을 건설하여 역사에 이름을 남길 것입니다.`, initialState.turn);
+        } else {
+          setError('맵 데이터를 가져오는 데 실패했습니다.');
+          showToast('맵 데이터를 가져오는 데 실패했습니다.', 'error');
+        }
         
         setIsLoading(false);
       } catch (err) {
@@ -144,7 +162,7 @@ export default function GamePage() {
     };
 
     loadGameData();
-  }, [mapType, difficulty, playerCiv, civCount, gameMode]);
+  }, []);
   
   // 토스트 메시지 표시
   const showToast = (message: string, type: 'info' | 'success' | 'warning' | 'error' = 'info') => {
@@ -168,28 +186,18 @@ export default function GamePage() {
       addLog('system', `턴 ${turn} 종료! AI 처리 중...`, turn);
       showToast(`턴 ${turn} 종료! AI 처리 중...`, 'info');
       
-      // 턴 종료 API 호출
-      const { newState, events } = await gameService.endTurn();
-      
-      // 이벤트 로그에 추가
-      events.forEach(event => {
-        addLog('event', event, turn);
-      });
-      
-      // 게임 상태 업데이트
-      setGameState(newState);
-      setTurn(newState.turn);
-      setYear(newState.year);
-      
-      // 맵 데이터 업데이트
-      const { hexagons } = await gameService.getMap();
-      setMapData(hexagons);
-      
-      // 턴 시작 메시지
-      addLog('system', `턴 ${newState.turn} 시작`, newState.turn);
-      showToast(`턴 ${newState.turn} 시작`, 'success');
-      
-      setPhase('player');
+      // 실제 엔드 턴 API가 구현될 때까지 임시 처리
+      setTimeout(() => {
+        const newState = { ...gameState, turn: turn + 1 };
+        setGameState(newState);
+        setTurn(newState.turn);
+        setYear(Math.floor(newState.year + (newState.turn < 50 ? 20 : 10)));
+        
+        addLog('system', `턴 ${newState.turn} 시작`, newState.turn);
+        showToast(`턴 ${newState.turn} 시작`, 'success');
+        
+        setPhase('player');
+      }, 1000);
     } catch (err) {
       setError(err instanceof Error ? err.message : '턴 처리 실패');
       showToast('턴 처리 실패', 'error');
@@ -256,46 +264,35 @@ export default function GamePage() {
     addLog('player', `${unit.typeName} 유닛이 이동했습니다`, turn);
   };
   
-  // 유닛 명령 처리
+  // 유닛 명령 처리 - 임시 구현
   const handleUnitCommand = async (unit: Unit, command: string) => {
     try {
-      const { unit: updatedUnit } = await gameService.commandUnit(unit.id, command);
-      
-      // 맵 데이터 업데이트
-      const { hexagons } = await gameService.getMap();
-      setMapData(hexagons);
-      
-      // 선택 상태 업데이트
-      setSelectedUnit(updatedUnit);
-      
-      // 명령 로그 추가
-      addLog('player', `${unit.typeName} 유닛에게 ${command} 명령을 내렸습니다`, turn);
+      // 임시 처리 (실제 API 구현 전)
       showToast(`${command} 명령 성공`, 'success');
+      addLog('player', `${unit.typeName} 유닛에게 ${command} 명령을 내렸습니다`, turn);
     } catch (err) {
       showToast(err instanceof Error ? err.message : '명령 실패', 'error');
     }
   };
   
-  // 도시 생산 설정
+  // 도시 생산 설정 - 임시 구현
   const handleCityProduction = async (cityId: number, item: string) => {
     try {
-      const { city } = await gameService.setCityProduction(cityId, item);
-      
-      // 게임 상태 업데이트
-      if (gameState) {
+      // 임시 처리 (실제 API 구현 전)
+      if (gameState && selectedCity) {
+        const city = { ...selectedCity, production: item, turnsLeft: 5 };
+        
+        // 게임 상태 업데이트
         const updatedCities = gameState.cities.map(c => 
           c.id === cityId ? city : c
         );
+        
         setGameState({ ...gameState, cities: updatedCities });
-      }
-      
-      // 선택된 도시 업데이트
-      if (selectedCity && selectedCity.id === cityId) {
         setSelectedCity(city);
+        
+        addLog('player', `${city.name} 도시가 ${item} 생산을 시작했습니다`, turn);
+        showToast(`${item} 생산 시작`, 'success');
       }
-      
-      addLog('player', `${city.name} 도시가 ${item} 생산을 시작했습니다`, turn);
-      showToast(`${item} 생산 시작`, 'success');
     } catch (err) {
       showToast(err instanceof Error ? err.message : '생산 설정 실패', 'error');
     }
@@ -377,10 +374,10 @@ export default function GamePage() {
       <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center">
         <div className="text-red-400 text-xl mb-4">{error || '게임 상태를 로드할 수 없습니다'}</div>
         <button 
-          onClick={() => router.refresh()}
+          onClick={() => router.push('/mode-select')}
           className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
         >
-          다시 시도
+          게임 모드 선택으로 돌아가기
         </button>
       </div>
     );
@@ -391,31 +388,60 @@ export default function GamePage() {
     switch (selectedTab) {
       case 'map':
         return (
-          <MapTab
-            gameId={gameId}
-            selectedTile={selectedTile}
-            onTileClick={handleSelectTile}
-            onUnitMove={handleUnitMove}
-          />
+          <Suspense fallback={<TabLoadingFallback />}>
+            <MapTab
+              mapData={mapData}
+              selectedTile={selectedTile}
+              onTileClick={handleSelectTile}
+              onUnitMove={handleUnitMove}
+            />
+          </Suspense>
         );
       case 'research':
-        return <ResearchTab />;
+        return (
+          <Suspense fallback={<TabLoadingFallback />}>
+            <ResearchTab />
+          </Suspense>
+        );
       case 'units':
         return (
-          <UnitsTab
-            units={gameState.units}
-            onSelectUnit={setSelectedUnit}
-            onUnitCommand={handleUnitCommand}
-          />
+          <Suspense fallback={<TabLoadingFallback />}>
+            <UnitsTab
+              units={gameState.units}
+              onSelectUnit={setSelectedUnit}
+              onUnitCommand={handleUnitCommand}
+            />
+          </Suspense>
+        );
+      case 'construction':
+        return (
+          <Suspense fallback={<TabLoadingFallback />}>
+            <ConstructionTab
+              cities={gameState.cities}
+              onConstructBuilding={(cityId, buildingId) => {
+                // 건물 건설 처리
+                console.log('건물 건설:', cityId, buildingId);
+              }}
+            />
+          </Suspense>
         );
       case 'turn':
         return (
-          <TurnTab
-            turn={turn}
-            phase={phase}
-            onEndTurn={endTurn}
-            events={log.filter(entry => entry.type === 'event' && entry.turn === turn)}
-          />
+          <Suspense fallback={<TabLoadingFallback />}>
+            <TurnTab
+              turnNumber={turn}
+              year={year}
+              phase={phase}
+              onEndTurn={endTurn}
+              events={log.filter(entry => entry.type === 'event' && entry.turn === turn)}
+            />
+          </Suspense>
+        );
+      case 'diplomacy':
+        return (
+          <Suspense fallback={<TabLoadingFallback />}>
+            <DiplomacyTab />
+          </Suspense>
         );
       default:
         return <div className="p-4">선택된 탭이 없습니다</div>;

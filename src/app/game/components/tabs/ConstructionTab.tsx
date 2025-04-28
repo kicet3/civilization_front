@@ -308,13 +308,16 @@ export default function ConstructionTab() {
         return;
       }
       
+      // 항상 도시 ID 1로 설정
+      const fixedCityId = 1;
+      
       // 로컬 스토리지에 생산 정보 저장
       const constructionData = {
         buildingId,
         buildingName: selectedBuilding.name,
-        turnsLeft: selectedBuilding.turnsToBuild || selectedBuilding.buildTime,
+        turnsLeft: selectedBuilding.turnsToBuild ?? selectedBuilding.buildTime,
         category: selectedBuilding.category,
-        cityId,
+        cityId: fixedCityId,
         startedAt: new Date().toISOString(),
       };
       
@@ -756,7 +759,7 @@ export default function ConstructionTab() {
                     <div className="flex justify-between items-start mb-3">
                       <h4 className="font-semibold text-lg">{building.name}</h4>
                       <span className="px-2 py-1 rounded-full text-xs font-medium bg-indigo-600 text-white">
-                        {building.turnsToBuild}턴
+                        {building.turnsToBuild ?? building.buildTime}턴
                       </span>
                     </div>
                     
@@ -797,13 +800,8 @@ export default function ConstructionTab() {
                     
                     <button
                       onClick={() => {
-                        if (selectedCityId) {
-                          handleStartConstruction(selectedCityId, building.id);
-                        } else if (cities.length > 0) {
-                          handleStartConstruction(cities[0].id, building.id);
-                        } else {
-                          showToast('건설할 도시가 없습니다.', 'error');
-                        }
+                        // 도시 확인 없이 바로 건설 시작
+                        handleStartConstruction(1, building.id);
                       }}
                       className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 rounded-md text-sm"
                     >

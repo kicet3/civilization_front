@@ -167,6 +167,7 @@ export interface Unit {
   name: string;
   type: string;
   typeName: string;
+  unitType?: string;
   owner?: string;
   hp: number;
   maxHp: number;
@@ -179,6 +180,12 @@ export interface Unit {
     r: number;
     s: number;
   };
+  strength?: number;
+  rangedStrength?: number;
+  experience?: number;
+  level?: number;
+  abilities?: string[];
+  promotions?: string[];
 }
 
 // 연구 상태 타입
@@ -189,6 +196,7 @@ export interface ResearchState {
     techId: number;
     points: number;
     required: number;
+    requiredPoints?: number;
   };
   completed: number[];
   available: number[];

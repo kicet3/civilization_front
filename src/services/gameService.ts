@@ -64,9 +64,9 @@ class GameService {
   /**
    * 다음 턴으로 진행합니다.
    */
-  async endTurn(gameId: string, userName?: string, gameSummary?: any): Promise<ApiResponse<any>> {
-    const params = userName ? { user_name: userName } : {};
-    return apiClient.post<ApiResponse<any>>(`/games/${gameId}/turn/next`, gameSummary, { params });
+  async endTurn(gameSummary?: any): Promise<ApiResponse<any>> {
+  
+    return apiClient.post<ApiResponse<any>>(`/games/turn/end`, gameSummary);
   }
 
   /**

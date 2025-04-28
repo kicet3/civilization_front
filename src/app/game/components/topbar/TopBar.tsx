@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 
 interface Resources {
   food: number;
@@ -17,6 +17,11 @@ interface TopBarProps {
 }
 
 export default function TopBar({ resources, turn, year }: TopBarProps) {
+  // 리소스 값 로깅
+  useEffect(() => {
+    console.log('TopBar에 전달된 리소스:', resources);
+  }, [resources]);
+
   // 기본 리소스 값 설정
   const defaultResources: Resources = {
     food: 0,

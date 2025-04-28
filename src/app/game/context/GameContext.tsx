@@ -9,8 +9,20 @@ import {
   City, 
   ResearchState,
   DiplomacyState, 
-  Technology
+  Technology,
+  ApiResponse
 } from '@/types/game';
+
+// ApiResponse 타입 확장
+interface MapResponse extends ApiResponse<any> {
+  player_resources?: {
+    food: number;
+    production: number;
+    gold: number;
+    science: number;
+    culture: number;
+  };
+}
 
 interface GameContextType {
   gameState: GameState | null;
@@ -89,17 +101,21 @@ export function GameProvider({ children }: GameProviderProps) {
       }
       
       // 맵 데이터 조회
-      const mapResponse = await gameService.getMapData(currentGameId);
+      const mapResponse = await gameService.getMapData(currentGameId) as MapResponse;
+      console.log('맵 데이터 응답:', mapResponse);
       
       if (mapResponse.success && mapResponse.data) {
         const gameData = mapResponse.data;
+        console.log('서버에서 받은 게임 데이터:', gameData);
+        // 플레이어 리소스 로그 출력
+        console.log('서버에서 받은 플레이어 리소스:', mapResponse.player_resources);
         
         // 게임 상태 설정
         const initialState: GameState = {
           id: currentGameId,
           turn: gameData.currentTurn || 1,
           year: gameData.year || -4000,
-          resources: gameData.player_resources || {
+          resources: mapResponse.player_resources || {
             food: 0,
             production: 0,
             gold: 0,
@@ -354,36 +370,27 @@ export function GameProvider({ children }: GameProviderProps) {
         startTime = localStorage.getItem('game_start_time') || startTime;
       }
       
-      // 게임 요약 데이터 준비 (GameSummary 타입에 맞게)
-      const gameSummary = {
-        // 게임 기본 정보
-        gameId: gameId,
-        userId: userId,
-        turn: gameState?.turn || 1,
-        year: currentYear,
-        difficulty: difficulty,
-        mapType: mapType,
-        gameMode: gameMode,
-        victoryType: null,
-        
-        // 타임스탬프
-        startTime: startTime,
-        endTime: null, // 게임 종료가 아니므로 null
-        totalPlayTime: null, // 계산 어려움
-        
-        // 문명 상태 정보
-        civilizationId: gameState?.map?.civs ? 
-          gameState.map.civs.find((civ: any) => civ.isPlayer === true)?.id || null : null,
-        civilizationName: gameState?.map?.civs ? 
-          gameState.map.civs.find((civ: any) => civ.isPlayer === true)?.name || null : null,
-        leaderName: gameState?.map?.civs ? 
-          gameState.map.civs.find((civ: any) => civ.isPlayer === true)?.leader || null : null,
-        
-        // 자원 현황
-        resources: gameState?.resources || {},
-        
-        // 도시 정보
-        cities: gameState?.cities?.map(city => ({
+      // TurnNextRequest 데이터 준비
+      const turnNextRequest = {
+        achievements: [],
+        actionCounts: {},
+        actions: [],
+        capitalCity: (() => {
+          const capital = gameState?.cities?.find((city: any) => city.isCapital === true) || (gameState?.cities?.[0] ?? null);
+          if (!capital) return null;
+          return {
+            ...capital,
+            buildings: (capital as any).buildings || [],
+            production: (capital as any).production || {
+              type: '',
+              item: '',
+              progress: 0,
+              required: 0
+            }
+          };
+        })(),
+        capturedCities: [], // 추적 불가, 빈 배열로 전송
+        cities: (gameState?.cities ?? []).map(city => ({
           id: city.id,
           name: city.name,
           population: city.population,
@@ -391,83 +398,102 @@ export function GameProvider({ children }: GameProviderProps) {
             q: city.location.q,
             r: city.location.r,
             s: city.location.s
-          } : null,
-          buildings: (city as any).buildings || []
-        })) || [],
-        totalCities: gameState?.cities?.length || 0,
-        capitalCity: gameState?.cities?.find((city: any) => city.isCapital === true) || null,
-        capturedCities: 0, // 현재 게임 상태에서는 추적 불가
-        foundedCities: gameState?.cities?.length || 0,
-        
-        // 유닛 정보
-        units: gameState?.units?.map(unit => ({
+          } : { q: 0, r: 0, s: 0 },
+          buildings: (city as any).buildings || [],
+          production: (city as any).production || {
+            type: '',
+            item: '',
+            progress: 0,
+            required: 0
+          }
+        })),
+        civilianUnits: (gameState?.units ?? []).filter(unit => unit.type === 'civilian').map(unit => ({
           id: unit.id,
-          name: unit.name,
-          type: unit.type,
-          typeName: unit.typeName,
+          type: unit.unitType || 'settler',
+          name: unit.name || '',
           location: unit.location ? {
             q: unit.location.q,
             r: unit.location.r,
             s: unit.location.s
-          } : null,
+          } : { q: 0, r: 0, s: 0 },
           hp: unit.hp,
           maxHp: unit.maxHp,
           movement: unit.movement,
           maxMovement: unit.maxMovement,
-          status: unit.status
-        })) || [],
-        totalUnits: gameState?.units?.length || 0,
-        militaryUnits: gameState?.units?.filter(unit => unit.type !== 'civilian').length || 0,
-        civilianUnits: gameState?.units?.filter(unit => unit.type === 'civilian').length || 0,
-        unitsLost: 0, // 현재 게임 상태에서는 추적 불가
-        unitsKilled: 0, // 현재 게임 상태에서는 추적 불가
-        
-        // 기술 및 연구 정보
-        completedTechnologies: researchState?.completed?.map(techId => {
-          const tech = technologies.find(t => t.id === techId);
-          return {
-            id: techId,
-            name: tech?.name || `기술 ${techId}`,
-            era: tech?.era || 'unknown'
-          };
-        }) || [],
-        currentResearch: researchState?.current ? {
-          id: researchState.current.techId,
-          name: technologies.find(t => t.id === researchState.current?.techId)?.name || 
-            `기술 ${researchState.current?.techId}`,
-          progress: researchState.current?.points || 0,
-          required: researchState.current?.required || 0
-        } : null,
-        researchProgress: researchState?.current?.points || 0,
-        researchQueue: [], // 현재 게임 상태에서는 큐 정보가 없음
-        totalTechsResearched: researchState?.completed?.length || 0,
-        techEra: era,
-        selectedTechTrees: researchState?.treeSelection || {},
-        
-        // 외교 정보
-        diplomacyStates: Object.entries(diplomacyState?.civRelations || {}).map(([civId, status]) => ({
-          civId: parseInt(civId),
-          status: status
+          status: unit.status,
+          experience: unit.experience || 0,
+          level: unit.level || 1,
+          abilities: unit.abilities || []
         })),
-        wars: Object.values(diplomacyState?.civRelations || {}).filter(status => status === 'war').length,
-        alliances: Object.values(diplomacyState?.civRelations || {}).filter(status => status === 'alliance').length,
-        trades: 0, // 현재 게임 상태에서는 추적 불가
-        
-        // 전투 및 전략 정보
-        battles: [], // 현재 게임 상태에서는 전투 기록 없음
-        territoryCaptured: 0, // 현재 게임 상태에서는 추적 불가
-        territoryLost: 0, // 현재 게임 상태에서는 추적 불가
-        successfulDefenses: 0, // 현재 게임 상태에서는 추적 불가
-        successfulAttacks: 0, // 현재 게임 상태에서는 추적 불가
-        
-        // 이벤트 및 액션 로그
-        events: [], // 현재 게임 상태에서는 이벤트 기록 없음
-        actionCounts: {}, // 현재 게임 상태에서는 액션 카운트 없음
-        
-        // 맵 상태 정보
+        civilizationId: gameState?.map?.civs ? 
+          gameState.map.civs.find((civ: any) => civ.isPlayer === true)?.id || null : null,
+        civilizationName: gameState?.map?.civs ? 
+          gameState.map.civs.find((civ: any) => civ.isPlayer === true)?.name || null : null,
+        currentResearch: researchState?.current ? [
+          technologies.find(t => t.id === researchState.current?.techId)?.name || `기술 ${researchState.current?.techId}`
+        ] : [],
+        completedResearch: researchState?.completed?.map(techId => ({
+          techId,
+          name: technologies.find(t => t.id === techId)?.name || `기술 ${techId}`,
+          era: technologies.find(t => t.id === techId)?.era || ''
+        })) || [],
+        difficulty: difficulty,
+        diplomacyStates: Object.entries(diplomacyState?.civRelations || {}).map(([civId, status]) => ({
+          civId: civId,
+          status: status,
+          wars: status === 'war' ? 1 : 0,
+          alliances: status === 'alliance' ? 1 : 0,
+          trades: 0 // 추적 불가
+        })),
+        endTime: new Date().toISOString(),
         exploredTiles: mapData.filter(tile => tile.explored).length,
-        visibleTiles: mapData.filter(tile => tile.visible).length,
-        unexploredTiles: mapData.filter(tile => !tile.explored).length,
+        events: [],
+        foundedCities: gameState?.cities?.filter((city: any) => city.isFounded).map(city => ({
+          id: city.id,
+          name: city.name,
+          population: city.population,
+          location: city.location ? {
+            q: city.location.q,
+            r: city.location.r,
+            s: city.location.s
+          } : { q: 0, r: 0, s: 0 },
+          buildings: (city as any).buildings || [],
+          production: (city as any).production || {
+            type: '',
+            item: '',
+            progress: 0,
+            required: 0
+          }
+        })) ?? [],
+        leaderName: gameState?.map?.civs ? 
+          (gameState.map.civs.find((civ: any) => civ.isPlayer === true)?.leader ?? '') : '',
+        militaryUnits: (gameState?.units ?? []).filter(unit => unit.type !== 'civilian').map(unit => ({
+          id: unit.id,
+          type: unit.unitType || 'warrior',
+          name: unit.name || '',
+          location: unit.location ? {
+            q: unit.location.q,
+            r: unit.location.r,
+            s: unit.location.s
+          } : { q: 0, r: 0, s: 0 },
+          hp: unit.hp,
+          maxHp: unit.maxHp,
+          movement: unit.movement,
+          maxMovement: unit.maxMovement,
+          status: unit.status,
+          strength: unit.strength || 0,
+          rangedStrength: unit.rangedStrength || 0,
+          experience: unit.experience || 0,
+          level: unit.level || 1,
+          abilities: unit.abilities || [],
+          promotions: unit.promotions || []
+        })),
+        researchProgress: researchState?.current?.points ? [String(researchState.current.points)] : [],
+        researchQueue: researchState?.queue?.map(tech => ({
+          techId: tech.techId,
+          name: technologies.find(t => t.id === tech.techId)?.name || `기술 ${tech.techId}`
+        })) || [],
+        resources: gameState?.resources || {},
         resourceLocations: mapData.filter(tile => tile.resource).map(tile => ({
           resource: tile.resource,
           location: {
@@ -476,17 +502,76 @@ export function GameProvider({ children }: GameProviderProps) {
             s: tile.s
           }
         })),
-        
-        // 성과 및 점수
-        totalScore: 0, // 현재 게임 상태에서는 점수 계산 없음
-        scoreComponents: {}, // 현재 게임 상태에서는 점수 구성 요소 없음
-        achievements: [], // 현재 게임 상태에서는 업적 없음
-        milestones: [] // 현재 게임 상태에서는 이정표 없음
+        scoreComponents: {},
+        selectedTechTrees: researchState?.treeSelection ? [String(researchState.treeSelection)] : [],
+        startTime: startTime,
+        successfulAttacks: 0,
+        successfulDefenses: 0,
+        techEra: era,
+        territoryCaptured: 0,
+        territoryLost: 0,
+        totalCities: gameState?.cities?.length || 0,
+        totalPlayTime: 0,
+        totalScore: 0,
+        totalTechsResearched: researchState?.completed?.length || 0,
+        totalUnits: gameState?.units?.length || 0,
+        unitProduction: (gameState?.cities ?? []).map(city => ({
+          cityId: city.id,
+          cityName: city.name,
+          production: (city as any).production?.type === 'unit' ? {
+            unitType: (city as any).production?.item || '',
+            progress: (city as any).production?.progress || 0,
+            required: (city as any).production?.required || 0
+          } : null
+        })).filter(city => city.production !== null),
+        trades: 0,
+        turn: gameState?.turn || 1,
+        unexploredTiles: mapData.filter(tile => !tile.explored).length,
+        units: (gameState?.units ?? []).map(unit => ({
+          id: unit.id,
+          type: unit.unitType || (unit.type === 'civilian' ? 'settler' : 'warrior'),
+          name: unit.name || '',
+          location: unit.location ? {
+            q: unit.location.q,
+            r: unit.location.r,
+            s: unit.location.s
+          } : { q: 0, r: 0, s: 0 },
+          hp: unit.hp,
+          maxHp: unit.maxHp,
+          movement: unit.movement,
+          maxMovement: unit.maxMovement,
+          status: unit.status,
+          strength: unit.strength || 0,
+          rangedStrength: unit.rangedStrength || 0,
+          experience: unit.experience || 0,
+          level: unit.level || 1,
+          abilities: unit.abilities || [],
+          promotions: unit.promotions || []
+        })),
+        unitsKilled: 0,
+        victoryType: '',
+        unitsLost: 0,
+        visibleTiles: mapData.filter(tile => tile.visible).length,
+        wars: Object.values(diplomacyState?.civRelations || {}).filter(status => status === 'war').length,
+        year: currentYear,
+        gameId: parseInt(gameId),
+        tiles: mapData.map(tile => ({
+          location: {
+            q: tile.q,
+            r: tile.r,
+            s: tile.s
+          },
+          resource: tile.resource || '',
+          resourceAmount: 0, // 정보 없음
+          terrain: tile.terrain,
+          movementCost: 1 // 정보 없음
+        }))
       };
+
       
       console.log('턴 종료 요청:', gameId);
-      // 턴 종료 API 호출
-      const turnResult = await gameService.endTurn(gameId, userName, gameSummary);
+      // 턴 종료 API 호출 - TurnNextRequest로 요청
+      const turnResult = await gameService.endTurn(turnNextRequest);
       console.log('턴 종료 결과:', turnResult);
       
       if (!turnResult.success) {

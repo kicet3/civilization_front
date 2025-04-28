@@ -73,6 +73,9 @@ export default function DiplomacyChat({
       </div>
 
       <div className="flex-1 overflow-y-auto p-3 space-y-3">
+        {messages.length === 0 && (
+          <div className="flex justify-center text-slate-400">아직 대화가 시작되지 않았습니다.</div>
+        )}
         {messages.map((msg, idx) => (
           <div
             key={idx}

@@ -110,9 +110,11 @@ export default function GamePage() {
           </div>
           
           {/* 우측 로그 패널 - 너비 고정 */}
-          <div className="w-72 flex-shrink-0">
-            <LogPanel />
-          </div>
+          {selectedTab !== 'diplomacy' && (
+            <div className="w-72 flex-shrink-0">
+              <LogPanel />
+            </div>
+          )}
         </div>
       </div>
     </GameLayout>

@@ -74,6 +74,16 @@ export default function DiplomacyTab() {
     setSending(true);
     // WebSocket 직접 송신
     try {
+      // 내 메시지를 바로 추가 (UI에 즉시 반영)
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          role: 'user',
+          content: message,
+          timestamp: new Date().toISOString(),
+          sender: 'player',
+        },
+      ]);
       (chatSocket as WebSocket).send(JSON.stringify({ type: 'message', content: message }));
     } catch (e) {
       setChatMessages((prev) => [...prev, { role: 'system', content: '메시지 전송 오류', timestamp: new Date().toISOString(), is_error: true }]);
@@ -207,13 +217,17 @@ export default function DiplomacyTab() {
           <h3 className="text-xl mb-4">외교 상태</h3>
           <div className="bg-slate-800 p-4 rounded-md flex flex-col flex-1">
             {selectedCiv ? (
-              <DiplomacyChat 
-                civilization={selectedCiv}
-                messages={chatMessages}
-                onSendMessage={handleSendMessage}
-                onClose={() => setSelectedCiv(null)}
-                isSending={sending}
-              />
+              <>
+                { /* 외교 탭에서는 게임 조언가(Advisor) UI를 숨깁니다. */ }
+                <DiplomacyChat 
+                  civilization={selectedCiv}
+                  messages={chatMessages}
+                  onSendMessage={handleSendMessage}
+                  onClose={() => setSelectedCiv(null)}
+                  isSending={sending}
+                />
+              </>
+
             ) : (
               <p className="text-center text-slate-400">문명을 선택하여 외교 관계를 관리하세요.</p>
             )}

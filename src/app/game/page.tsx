@@ -92,7 +92,7 @@ export default function GamePage() {
         <TopBar 
           resources={gameState?.resources} 
           turn={gameState?.turn || 1} 
-          year={gameState?.year || -4000} 
+          year={gameState?.year || 1000} 
         />
         
         <div className="flex flex-grow overflow-hidden">
@@ -109,8 +109,10 @@ export default function GamePage() {
             {renderTabContent()}
           </div>
           
-          {/* 우측 로그 패널 */}
-          <LogPanel />
+          {/* 우측 로그 패널 - 너비 고정 */}
+          <div className="w-72 flex-shrink-0">
+            <LogPanel />
+          </div>
         </div>
       </div>
     </GameLayout>

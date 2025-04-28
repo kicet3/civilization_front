@@ -6,8 +6,8 @@ interface Resources {
   gold: number;
   science: number;
   culture: number;
-  faith: number;
-  happiness: number;
+  faith?: number;
+  happiness?: number;
 }
 
 interface TopBarProps {
@@ -23,10 +23,31 @@ export default function TopBar({ resources, turn, year }: TopBarProps) {
     production: 0,
     gold: 0,
     science: 0,
-    culture: 0,
-    faith: 0,
-    happiness: 0
+    culture: 0
   };
+
+  // 시대 결정 함수
+  const getEra = (year: number): { era: string, koreanEra: string } => {
+    if (year < 1300) {
+      return { era: 'Medieval', koreanEra: '중세' };
+    } else if (year < 1900) {
+      return { era: 'Industrial', koreanEra: '산업' };
+    } else {
+      return { era: 'Modern', koreanEra: '현대' };
+    }
+  };
+
+  // 연도 표시 형식 개선
+  const formatYear = (year: number): string => {
+    if (year < 0) {
+      return `BC ${Math.abs(year)}년`;
+    } else {
+      return `AD ${year}년`;
+    }
+  };
+
+  // 현재 시대 계산
+  const { era, koreanEra } = getEra(year);
 
   // 리소스가 없는 경우 기본값 사용
   const safeResources = resources || defaultResources;
@@ -36,9 +57,10 @@ export default function TopBar({ resources, turn, year }: TopBarProps) {
       {/* 왼쪽: 게임 정보 */}
       <div className="flex items-center">
         <div className="text-xl font-bold mr-4">문명 게임</div>
-        <div className="text-sm">
-          <span className="mr-2">턴: {turn}</span>
-          <span>년도: {year < 0 ? `BC ${Math.abs(year)}` : `AD ${year}`}</span>
+        <div className="text-sm flex space-x-3">
+          <span>턴: {turn}</span>
+          <span>년도: {formatYear(year)}</span>
+          <span>시대: <span className="text-indigo-400 font-semibold">{koreanEra}</span></span>
         </div>
       </div>
       
@@ -63,14 +85,6 @@ export default function TopBar({ resources, turn, year }: TopBarProps) {
         <div className="flex items-center">
           <div className="px-2 py-0.5 bg-purple-400 text-white rounded-full mr-2 text-xs">문화</div>
           <span>{safeResources.culture}</span>
-        </div>
-        <div className="flex items-center">
-          <div className="px-2 py-0.5 bg-indigo-400 text-white rounded-full mr-2 text-xs">신앙</div>
-          <span>{safeResources.faith}</span>
-        </div>
-        <div className="flex items-center">
-          <div className="px-2 py-0.5 bg-pink-400 text-white rounded-full mr-2 text-xs">행복도</div>
-          <span>{safeResources.happiness}</span>
         </div>
       </div>
     </div>

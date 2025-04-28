@@ -122,8 +122,8 @@ export interface GameState {
     gold: number;
     science: number;
     culture: number;
-    faith: number;
-    happiness: number;
+    faith?: number;
+    happiness?: number;
   };
   map?: GameMapState;
   cities: City[];

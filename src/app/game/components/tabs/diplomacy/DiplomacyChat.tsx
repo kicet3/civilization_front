@@ -1,142 +1,126 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { X, Send } from 'lucide-react';
 import { Civilization } from '@/types/game';
-
-interface Message {
-  id: string;
-  sender: 'player' | 'leader';
-  content: string;
-  timestamp: Date;
-}
+import { ChatMessage } from '../../utils/chatWebSocket';
 
 interface DiplomacyChatProps {
-  leader: Civilization;
-  isOpen: boolean;
+  civilization: Civilization;
+  messages: ChatMessage[];
+  onSendMessage: (message: string) => void;
   onClose: () => void;
-  onSendMessage: (message: string) => Promise<void>;
+  isSending: boolean;
 }
 
-const DiplomacyChat: React.FC<DiplomacyChatProps> = ({
-  leader,
-  isOpen,
+export default function DiplomacyChat({
+  civilization,
+  messages,
+  onSendMessage,
   onClose,
-  onSendMessage
-}) => {
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [inputMessage, setInputMessage] = useState('');
+  isSending
+}: DiplomacyChatProps) {
+  const [message, setMessage] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
-
+  // 메시지 스크롤 자동 이동
   useEffect(() => {
-    scrollToBottom();
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
   }, [messages]);
 
-  const handleSendMessage = async () => {
-    if (!inputMessage.trim()) return;
-
-    const newMessage: Message = {
-      id: Date.now().toString(),
-      sender: 'player',
-      content: inputMessage,
-      timestamp: new Date()
-    };
-
-    setMessages(prev => [...prev, newMessage]);
-    setInputMessage('');
-
-    try {
-      await onSendMessage(inputMessage);
-    } catch (error) {
-      console.error('메시지 전송 실패:', error);
+  const handleSend = () => {
+    if (message.trim() && !isSending) {
+      onSendMessage(message);
+      setMessage('');
     }
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
+  const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      handleSendMessage();
+      handleSend();
     }
   };
 
-  if (!isOpen) return null;
-
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg w-full max-w-2xl h-[600px] flex flex-col">
-        {/* 헤더 */}
-        <div className="p-4 border-b flex items-center justify-between">
-          <div className="flex items-center space-x-4">
-            <div className="w-12 h-12 rounded-full bg-gray-200 overflow-hidden">
-              {leader.leaderImage && (
-                <img
-                  src={leader.leaderImage}
-                  alt={leader.leader}
-                  className="w-full h-full object-cover"
-                />
-              )}
-            </div>
-            <div>
-              <h3 className="font-bold">{leader.leader}</h3>
-              <p className="text-sm text-gray-600">{leader.name}의 지도자</p>
-            </div>
+    <div className="flex flex-col h-full">
+      <div className="flex justify-between items-center border-b border-slate-700 p-3">
+        <div className="flex items-center">
+          <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center mr-2">
+            {civilization.leaderImage ? (
+              <img
+                src={civilization.leaderImage}
+                alt={civilization.leader}
+                className="w-full h-full rounded-full object-cover"
+              />
+            ) : (
+              <div className="bg-blue-600 w-full h-full rounded-full flex items-center justify-center text-white font-bold">
+                {civilization.name.charAt(0)}
+              </div>
+            )}
           </div>
-          <button
-            onClick={onClose}
-            className="text-gray-500 hover:text-gray-700"
-          >
-            ✕
-          </button>
+          <div>
+            <p className="font-medium text-sm">{civilization.name}</p>
+            <p className="text-xs text-slate-400">지도자: {civilization.leader || '알 수 없음'}</p>
+          </div>
         </div>
+        <button
+          onClick={onClose}
+          className="p-1 rounded-full hover:bg-slate-700"
+        >
+          <X size={16} />
+        </button>
+      </div>
 
-        {/* 메시지 영역 */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {messages.map((message) => (
+      <div className="flex-1 overflow-y-auto p-3 space-y-3">
+        {messages.map((msg, idx) => (
+          <div
+            key={idx}
+            className={`flex ${msg.sender === 'player' ? 'justify-end' : 'justify-start'}`}
+          >
             <div
-              key={message.id}
-              className={`flex ${
-                message.sender === 'player' ? 'justify-end' : 'justify-start'
+              className={`p-2 rounded-lg max-w-xs break-words ${
+                msg.sender === 'player'
+                  ? 'bg-blue-600 text-white'
+                  : msg.is_error
+                  ? 'bg-red-600 text-white'
+                  : 'bg-slate-700 text-white'
               }`}
             >
-              <div
-                className={`max-w-[70%] rounded-lg p-3 ${
-                  message.sender === 'player'
-                    ? 'bg-blue-500 text-white'
-                    : 'bg-gray-100 text-gray-800'
-                }`}
-              >
-                <p>{message.content}</p>
-                <span className="text-xs opacity-70 mt-1 block">
-                  {message.timestamp.toLocaleTimeString()}
-                </span>
+              {msg.content}
+              <div className="text-xs opacity-70 mt-1">
+                {new Date(msg.timestamp).toLocaleTimeString()}
               </div>
             </div>
-          ))}
-          <div ref={messagesEndRef} />
-        </div>
-
-        {/* 입력 영역 */}
-        <div className="p-4 border-t">
-          <div className="flex space-x-2">
-            <textarea
-              value={inputMessage}
-              onChange={(e) => setInputMessage(e.target.value)}
-              onKeyPress={handleKeyPress}
-              placeholder="메시지를 입력하세요..."
-              className="flex-1 border rounded-lg p-2 resize-none h-20"
-            />
-            <button
-              onClick={handleSendMessage}
-              className="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600"
-            >
-              전송
-            </button>
           </div>
+        ))}
+        <div ref={messagesEndRef} />
+      </div>
+
+      <div className="border-t border-slate-700 p-2">
+        <div className="flex">
+          <input
+            type="text"
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            onKeyDown={handleKeyDown}
+            disabled={isSending}
+            placeholder="메시지를 입력하세요..."
+            className="flex-1 bg-slate-700 text-white p-2 rounded-l-md focus:outline-none"
+          />
+          <button
+            onClick={handleSend}
+            disabled={isSending || !message.trim()}
+            className={`p-2 flex items-center justify-center rounded-r-md ${
+              isSending || !message.trim()
+                ? 'bg-slate-600 text-slate-400 cursor-not-allowed'
+                : 'bg-blue-600 text-white hover:bg-blue-500'
+            }`}
+          >
+            <Send size={16} />
+          </button>
         </div>
       </div>
     </div>
   );
-};
-
-export default DiplomacyChat; 
+} 

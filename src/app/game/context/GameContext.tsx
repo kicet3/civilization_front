@@ -99,14 +99,12 @@ export function GameProvider({ children }: GameProviderProps) {
           id: currentGameId,
           turn: gameData.currentTurn || 1,
           year: gameData.year || -4000,
-          resources: gameData.resources || {
-            food: 10,
-            production: 5,
-            gold: 20,
-            science: 3,
-            culture: 2,
-            faith: 1,
-            happiness: 10
+          resources: gameData.player_resources || {
+            food: 0,
+            production: 0,
+            gold: 0,
+            science: 0,
+            culture: 0
           },
           cities: [],
           units: [],
@@ -286,21 +284,258 @@ export function GameProvider({ children }: GameProviderProps) {
     }
   };
   
+  // 시대 결정 함수
+  const getEra = (year: number): { era: string, koreanEra: string } => {
+    if (year < 1300) {
+      return { era: 'Medieval', koreanEra: '중세' };
+    } else if (year < 1900) {
+      return { era: 'Industrial', koreanEra: '산업' };
+    } else {
+      return { era: 'Modern', koreanEra: '현대' };
+    }
+  };
+
+  // 턴당 지나는 시간 계산 (현재 시대에 따라 다름)
+  const getYearsPerTurn = (era: string): number => {
+    switch (era) {
+      case 'Medieval': return 20; // 중세시대는 턴당 20년
+      case 'Industrial': return 10; // 산업시대는 턴당 10년
+      case 'Modern': return 5; // 현대시대는 턴당 5년
+      default: return 20;
+    }
+  };
+  
   // 턴 종료 함수
   const endTurn = async () => {
     try {
       setIsLoading(true);
       
-      // 턴 종료 시 백엔드로 현재 상태 전송
-      // 실제 API는 구현 시 수정 필요
-      // const turnResult = await gameService.endTurn(gameState?.id || '');
+      // 로컬 스토리지에서 게임 ID 가져오기 (클라이언트 사이드에서만)
+      let gameId = '';
+      if (typeof window !== 'undefined') {
+        gameId = localStorage.getItem('current_game_id') || '';
+      }
+      if (!gameId && gameState?.id) {
+        // 로컬 스토리지에 없을 경우 게임 상태에서 ID 가져오기
+        gameId = gameState.id.toString();
+      }
+      if (!gameId) {
+        throw new Error('게임 ID를 찾을 수 없습니다.');
+      }
+      
+      // 사용자 정보 가져오기 (클라이언트 사이드에서만)
+      let userId: string | undefined;
+      let userName: string | undefined;
+      if (typeof window !== 'undefined') {
+        userId = localStorage.getItem('user_id') || undefined;
+        userName = localStorage.getItem('user_name') || undefined;
+      }
+      
+      // 현재 시대와 턴당 년수 계산
+      const currentYear = gameState?.year || 0;
+      const { era } = getEra(currentYear);
+      const yearsPerTurn = getYearsPerTurn(era);
+      const nextYear = currentYear + yearsPerTurn;
+      
+      // 로컬 스토리지에서 게임 설정 가져오기
+      let difficulty = 'normal';
+      let mapType = 'continent';
+      let gameMode = 'standard';
+      
+      if (typeof window !== 'undefined') {
+        difficulty = localStorage.getItem('game_difficulty') || 'normal';
+        mapType = localStorage.getItem('game_map_type') || 'continent';
+        gameMode = localStorage.getItem('game_mode') || 'standard';
+      }
+      
+      // 게임 시작 시간 (없으면 현재 시간으로 설정)
+      let startTime = new Date().toISOString();
+      if (typeof window !== 'undefined') {
+        startTime = localStorage.getItem('game_start_time') || startTime;
+      }
+      
+      // 게임 요약 데이터 준비 (GameSummary 타입에 맞게)
+      const gameSummary = {
+        // 게임 기본 정보
+        gameId: gameId,
+        userId: userId,
+        turn: gameState?.turn || 1,
+        year: currentYear,
+        difficulty: difficulty,
+        mapType: mapType,
+        gameMode: gameMode,
+        victoryType: null,
+        
+        // 타임스탬프
+        startTime: startTime,
+        endTime: null, // 게임 종료가 아니므로 null
+        totalPlayTime: null, // 계산 어려움
+        
+        // 문명 상태 정보
+        civilizationId: gameState?.map?.civs ? 
+          gameState.map.civs.find((civ: any) => civ.isPlayer === true)?.id || null : null,
+        civilizationName: gameState?.map?.civs ? 
+          gameState.map.civs.find((civ: any) => civ.isPlayer === true)?.name || null : null,
+        leaderName: gameState?.map?.civs ? 
+          gameState.map.civs.find((civ: any) => civ.isPlayer === true)?.leader || null : null,
+        
+        // 자원 현황
+        resources: gameState?.resources || {},
+        
+        // 도시 정보
+        cities: gameState?.cities?.map(city => ({
+          id: city.id,
+          name: city.name,
+          population: city.population,
+          location: city.location ? {
+            q: city.location.q,
+            r: city.location.r,
+            s: city.location.s
+          } : null,
+          buildings: (city as any).buildings || []
+        })) || [],
+        totalCities: gameState?.cities?.length || 0,
+        capitalCity: gameState?.cities?.find((city: any) => city.isCapital === true) || null,
+        capturedCities: 0, // 현재 게임 상태에서는 추적 불가
+        foundedCities: gameState?.cities?.length || 0,
+        
+        // 유닛 정보
+        units: gameState?.units?.map(unit => ({
+          id: unit.id,
+          name: unit.name,
+          type: unit.type,
+          typeName: unit.typeName,
+          location: unit.location ? {
+            q: unit.location.q,
+            r: unit.location.r,
+            s: unit.location.s
+          } : null,
+          hp: unit.hp,
+          maxHp: unit.maxHp,
+          movement: unit.movement,
+          maxMovement: unit.maxMovement,
+          status: unit.status
+        })) || [],
+        totalUnits: gameState?.units?.length || 0,
+        militaryUnits: gameState?.units?.filter(unit => unit.type !== 'civilian').length || 0,
+        civilianUnits: gameState?.units?.filter(unit => unit.type === 'civilian').length || 0,
+        unitsLost: 0, // 현재 게임 상태에서는 추적 불가
+        unitsKilled: 0, // 현재 게임 상태에서는 추적 불가
+        
+        // 기술 및 연구 정보
+        completedTechnologies: researchState?.completed?.map(techId => {
+          const tech = technologies.find(t => t.id === techId);
+          return {
+            id: techId,
+            name: tech?.name || `기술 ${techId}`,
+            era: tech?.era || 'unknown'
+          };
+        }) || [],
+        currentResearch: researchState?.current ? {
+          id: researchState.current.techId,
+          name: technologies.find(t => t.id === researchState.current?.techId)?.name || 
+            `기술 ${researchState.current?.techId}`,
+          progress: researchState.current?.points || 0,
+          required: researchState.current?.required || 0
+        } : null,
+        researchProgress: researchState?.current?.points || 0,
+        researchQueue: [], // 현재 게임 상태에서는 큐 정보가 없음
+        totalTechsResearched: researchState?.completed?.length || 0,
+        techEra: era,
+        selectedTechTrees: researchState?.treeSelection || {},
+        
+        // 외교 정보
+        diplomacyStates: Object.entries(diplomacyState?.civRelations || {}).map(([civId, status]) => ({
+          civId: parseInt(civId),
+          status: status
+        })),
+        wars: Object.values(diplomacyState?.civRelations || {}).filter(status => status === 'war').length,
+        alliances: Object.values(diplomacyState?.civRelations || {}).filter(status => status === 'alliance').length,
+        trades: 0, // 현재 게임 상태에서는 추적 불가
+        
+        // 전투 및 전략 정보
+        battles: [], // 현재 게임 상태에서는 전투 기록 없음
+        territoryCaptured: 0, // 현재 게임 상태에서는 추적 불가
+        territoryLost: 0, // 현재 게임 상태에서는 추적 불가
+        successfulDefenses: 0, // 현재 게임 상태에서는 추적 불가
+        successfulAttacks: 0, // 현재 게임 상태에서는 추적 불가
+        
+        // 이벤트 및 액션 로그
+        events: [], // 현재 게임 상태에서는 이벤트 기록 없음
+        actionCounts: {}, // 현재 게임 상태에서는 액션 카운트 없음
+        
+        // 맵 상태 정보
+        exploredTiles: mapData.filter(tile => tile.explored).length,
+        visibleTiles: mapData.filter(tile => tile.visible).length,
+        unexploredTiles: mapData.filter(tile => !tile.explored).length,
+        resourceLocations: mapData.filter(tile => tile.resource).map(tile => ({
+          resource: tile.resource,
+          location: {
+            q: tile.q,
+            r: tile.r,
+            s: tile.s
+          }
+        })),
+        
+        // 성과 및 점수
+        totalScore: 0, // 현재 게임 상태에서는 점수 계산 없음
+        scoreComponents: {}, // 현재 게임 상태에서는 점수 구성 요소 없음
+        achievements: [], // 현재 게임 상태에서는 업적 없음
+        milestones: [] // 현재 게임 상태에서는 이정표 없음
+      };
+      
+      console.log('턴 종료 요청:', gameId);
+      // 턴 종료 API 호출
+      const turnResult = await gameService.endTurn(gameId, userName, gameSummary);
+      console.log('턴 종료 결과:', turnResult);
+      
+      if (!turnResult.success) {
+        throw new Error(turnResult.message || '턴 종료 실패');
+      }
+      
+      // API 응답에서 새 게임 데이터를 받아왔다면 상태 업데이트
+      if (turnResult.data) {
+        // 새 턴 정보 로깅 - 속성명 변경 가능성 고려
+        console.log('턴 종료 응답 데이터:', turnResult.data);
+        
+        // 다양한 가능한 속성명 시도
+        const newTurn = turnResult.data.current_turn || 
+                       turnResult.data.turn || 
+                       turnResult.data.currentTurn || 
+                       (gameState?.turn || 0) + 1;
+        
+        console.log(`턴 ${newTurn}으로 업데이트됨`);
+        
+        // 임시 저장된 로컬 스토리지 데이터 초기화
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('temp_resources');
+          localStorage.removeItem('current_research');
+          localStorage.removeItem('current_unit_production');
+          localStorage.removeItem('current_building_construction');
+        }
+      }
       
       // 새로운 턴 데이터 로드
       await loadGameData();
       
-      showToast('턴을 종료했습니다.', 'info');
+      // 다음 시대로 넘어갔는지 확인하여 메시지 표시
+      const newYear = (gameState?.year || 0) + yearsPerTurn;
+      const oldEra = getEra(currentYear).koreanEra;
+      const newEra = getEra(newYear).koreanEra;
+      
+      if (oldEra !== newEra) {
+        showToast(`축하합니다! ${newEra} 시대에 진입했습니다.`, 'success');
+      } else {
+        const displayTurn = turnResult.data?.current_turn || 
+                           turnResult.data?.turn || 
+                           turnResult.data?.currentTurn || 
+                           (gameState?.turn || 0) + 1;
+        showToast(`턴 ${displayTurn}으로 진행되었습니다.`, 'success');
+      }
+      
       setIsLoading(false);
     } catch (err) {
+      console.error('턴 종료 오류:', err);
       setError(err instanceof Error ? err.message : '턴 종료 실패');
       setIsLoading(false);
       showToast('턴 종료 실패', 'error');

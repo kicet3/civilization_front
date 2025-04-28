@@ -33,7 +33,8 @@ const ResearchTab: React.FC<ResearchTabProps> = ({ gameCivId = 1 }) => {
     isLoading, 
     error, 
     loadResearchData,
-    showToast
+    showToast,
+    gameState
   } = useGame();
   
   const [researchQueue, setResearchQueue] = useState<ResearchQueueEntry[]>([]);
@@ -84,13 +85,80 @@ const ResearchTab: React.FC<ResearchTabProps> = ({ gameCivId = 1 }) => {
   // 연구 시작
   const handleStartResearch = async (techId: number) => {
     try {
-      const result = await gameService.startResearch(gameCivId, techId);
-      if (result.success) {
-        // 상태 업데이트
-        await loadResearchData();
-        showToast('연구를 시작했습니다.', 'success');
+      // 선택한 기술 정보 가져오기
+      const selectedTech = technologies.find(tech => tech.id === techId);
+      if (!selectedTech) {
+        showToast('선택한 기술 정보를 찾을 수 없습니다.', 'error');
+        return;
       }
+      
+      // 재화 확인 (과학 점수)
+      const availableScience = gameState?.resources?.science || 0;
+      const techCost = selectedTech.researchCost || 0;
+      
+      if (availableScience < techCost) {
+        showToast(`연구에 필요한 과학 점수가 부족합니다. (필요: ${techCost}, 보유: ${availableScience})`, 'error');
+        return;
+      }
+      
+      // 로컬 스토리지에 연구 정보 저장
+      const researchData = {
+        techId,
+        techName: selectedTech.name,
+        era: selectedTech.era,
+        treeType: selectedTech.treeType,
+        researchCost: selectedTech.researchCost,
+        progress: 0,
+        startedAt: new Date().toISOString(),
+        cost: techCost,
+        required: techCost, // 완료에 필요한 총 포인트 추가
+        points: 0 // 현재 누적 포인트 추가
+      };
+      
+      localStorage.setItem('current_research', JSON.stringify(researchData));
+      
+      // 재화 차감 (실제로는 턴 종료 시 서버에서 처리)
+      if (gameState && gameState.resources) {
+        const updatedResources = {
+          ...gameState.resources,
+          science: availableScience - techCost
+        };
+        const existingResources = localStorage.getItem('temp_resources');
+        const mergedResources = existingResources 
+          ? { ...JSON.parse(existingResources), science: updatedResources.science }
+          : updatedResources;
+        
+        localStorage.setItem('temp_resources', JSON.stringify(mergedResources));
+        
+        // GameContext 업데이트
+        if (loadResearchData) {
+          loadResearchData();
+        }
+      }
+      
+      showToast(`${selectedTech.name} 연구를 시작했습니다.`, 'success');
+      
+      // researchState 강제 업데이트를 위해 GameContext에 있는 current 정보 설정
+      const updatedResearchState = {
+        ...researchState,
+        current: {
+          techId: techId,
+          techName: selectedTech.name,
+          required: techCost,
+          points: 0
+        }
+      };
+      
+      // 컴포넌트 상태 업데이트 
+      window.dispatchEvent(new Event('storage'));
+      
+      // 상태 업데이트 - 선택된 기술 창 닫기
+      setSelectedTech(null);
+      
+      // 턴 종료시 API로 전송하도록 수정 (API 호출 제거)
+      console.log('연구 정보가 저장되었습니다. 턴 종료시 서버로 전송됩니다:', researchData);
     } catch (err) {
+      console.error('연구 시작 실패:', err);
       showToast('연구 시작 실패', 'error');
     }
   };
@@ -136,15 +204,16 @@ const ResearchTab: React.FC<ResearchTabProps> = ({ gameCivId = 1 }) => {
 
   // 현재 연구 취소
   const handleCancelResearch = async () => {
-    if (!researchState?.current?.techId) return;
-    
     try {
-      const result = await gameService.cancelResearch(gameCivId, researchState.current.techId);
-      if (result.success) {
-        await loadResearchData();
-        showToast('연구가 취소되었습니다.', 'info');
-      }
+      // localStorage에서 연구 정보 제거
+      localStorage.removeItem('current_research');
+      showToast('연구가 취소되었습니다.', 'info');
+      
+      // 현재 UI 상태 강제 리렌더링을 위한 트릭
+      // 실제 구현에서는 GameContext 상태 업데이트를 호출하는 것이 좋음
+      window.dispatchEvent(new Event('storage'));
     } catch (err) {
+      console.error('연구 취소 실패:', err);
       showToast('연구 취소 실패', 'error');
     }
   };
@@ -349,7 +418,7 @@ const ResearchTab: React.FC<ResearchTabProps> = ({ gameCivId = 1 }) => {
                 onClick={() => handleStartResearch(tech.id)}
               >
                 <Beaker size={14} className="mr-1" />
-                지금 연구
+                연구 시작
               </button>
               <button 
                 className="px-3 py-1 text-sm rounded-md bg-slate-600 hover:bg-slate-700 flex items-center"
@@ -490,7 +559,22 @@ const ResearchTab: React.FC<ResearchTabProps> = ({ gameCivId = 1 }) => {
 
   // 현재 연구 중인 기술 정보
   const renderCurrentResearch = () => {
-    if (!researchState?.current) {
+    // localStorage에서 현재 연구 정보 가져오기
+    const currentResearch = (() => {
+      if (typeof window === 'undefined') return null;
+      
+      const data = localStorage.getItem('current_research');
+      if (!data) return null;
+      
+      try {
+        return JSON.parse(data);
+      } catch (e) {
+        console.error('연구 데이터 파싱 오류:', e);
+        return null;
+      }
+    })();
+    
+    if (!currentResearch && !researchState?.current?.techId) {
       return (
         <div className="p-4 bg-slate-800 rounded-md mb-4">
           <p>현재 연구 중인 기술이 없습니다.</p>
@@ -499,10 +583,16 @@ const ResearchTab: React.FC<ResearchTabProps> = ({ gameCivId = 1 }) => {
       );
     }
     
-    const currentTech = technologies.find(t => t.id === researchState.current?.techId);
+    const techId = currentResearch?.techId || researchState?.current?.techId;
+    const currentTech = technologies.find(t => t.id === techId);
     if (!currentTech) return null;
     
-    const progress = researchState.current.points / researchState.current.required * 100;
+    // 진행 정보 (localStorage 또는 researchState 중 하나에서 가져옴)
+    const points = currentResearch?.points || researchState?.current?.points || 0;
+    const required = currentResearch?.required || researchState?.current?.required || currentTech.researchCost;
+    
+    // 진행도 계산
+    const progress = (points / required) * 100 || 0;
     
     return (
       <div className="p-4 bg-slate-800 rounded-md mb-4 relative">
@@ -520,8 +610,8 @@ const ResearchTab: React.FC<ResearchTabProps> = ({ gameCivId = 1 }) => {
             </div>
             
             <div className="flex justify-between text-xs mt-1">
-              <span>{researchState.current.points}/{researchState.current.required} 과학</span>
-              <span>약 {Math.ceil((researchState.current.required - researchState.current.points) / (researchState.science || 1))} 턴 남음</span>
+              <span>{points || 0}/{required} 과학</span>
+              <span>연구 진행 중... {Math.floor(progress)}%</span>
             </div>
           </div>
         </div>

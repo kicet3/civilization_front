@@ -62,6 +62,14 @@ class GameService {
   }
 
   /**
+   * 다음 턴으로 진행합니다.
+   */
+  async endTurn(gameId: string, userName?: string, gameSummary?: any): Promise<ApiResponse<any>> {
+    const params = userName ? { user_name: userName } : {};
+    return apiClient.post<ApiResponse<any>>(`/games/${gameId}/turn/next`, gameSummary, { params });
+  }
+
+  /**
    * 새 게임 맵을 초기화합니다.
    */
   async initMap(gameConfig: {

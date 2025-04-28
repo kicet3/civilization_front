@@ -314,6 +314,7 @@ export default function ConstructionTab() {
         buildingName: selectedBuilding.name,
         turnsLeft: selectedBuilding.turnsToBuild || selectedBuilding.buildTime,
         category: selectedBuilding.category,
+        cityId,
         startedAt: new Date().toISOString(),
       };
       
@@ -323,20 +324,8 @@ export default function ConstructionTab() {
       // 상태 업데이트
       setShowConstructionModal(false);
       
-      // 서버에 정보 전송 (실제 API가 연결되면 사용)
-      try {
-        const response = await axios.post(`${API_BASE_URL}/cities/${cityId}/build/start`, {
-          buildingId
-        });
-        
-        if (response.data && response.data.success) {
-          // 서버에서 건설 성공 응답 시 로컬 스토리지 유지
-          console.log('건설 시작 성공:', response.data);
-        }
-      } catch (err) {
-        console.error("건설 시작 API 호출 실패:", err);
-        // API 실패해도 로컬 스토리지 유지하여 UX 연속성 확보
-      }
+      // 턴 종료시 API로 전송하도록 수정 (API 호출 제거)
+      console.log('건설 정보가 저장되었습니다. 턴 종료시 서버로 전송됩니다:', constructionData);
     } catch (error) {
       console.error("건설 시작 실패:", error);
       showToast('건물 건설 시작 실패', 'error');

@@ -2,10 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Unit, City } from '@/types/game';
+import { Unit, City, HexTile } from '@/types/game';
 import gameService from '@/services/gameService';
 import Spinner from "@/components/ui/spinner";
 import { toast } from 'sonner';
+import { Map, X } from 'lucide-react';
+import HexMap from './map/HexMap';
+import { useGame } from '../../context/GameContext';
 
 // 유닛 카테고리 타입 정의
 type UnitCategory = 'Melee' | 'Ranged' | 'Cavalry' | 'Siege' | 'Modern' | 'Civilian' | 'All';
@@ -38,6 +41,7 @@ interface GameState {
 }
 
 const UnitsTab: React.FC = () => {
+  const { gameState, showToast, mapData } = useGame();
   const [state, setState] = useState<GameState>({
     units: [],
     cities: [],
@@ -52,6 +56,11 @@ const UnitsTab: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState<UnitCategory>('All');
   const [eraFilter, setEraFilter] = useState<EraType>('All');
+  
+  // 위치 선택 관련 상태
+  const [selectedUnit, setSelectedUnit] = useState<UnitTemplate | null>(null);
+  const [isLocationModalOpen, setIsLocationModalOpen] = useState<boolean>(false);
+  const [selectedTile, setSelectedTile] = useState<HexTile | null>(null);
 
   // API에서 유닛 템플릿 가져오기
   useEffect(() => {
@@ -91,43 +100,89 @@ const UnitsTab: React.FC = () => {
     });
   }, []);
 
-  // 유닛 생산 시작 핸들러
-  const handleStartProduction = async (unitId: number) => {
+  // 유닛 생산 시작 전 확인 핸들러
+  const handleConfirmProduction = (unitId: number) => {
+    const selectedUnit = unitTemplates.find(unit => unit.id === unitId);
+    if (!selectedUnit) {
+      toast.error('선택한 유닛 정보를 찾을 수 없습니다.');
+      return;
+    }
+    
+    // 재화 확인 (게임 상태에서 보유한 생산력 확인)
+    const availableProduction = gameState?.resources?.production || 0;
+    const unitCost = selectedUnit.cost || 0;
+    
+    if (availableProduction < unitCost) {
+      toast.error(`유닛 생산에 필요한 생산력이 부족합니다. (필요: ${unitCost}, 보유: ${availableProduction})`);
+      return;
+    }
+    
+    // 유닛 정보 저장하고 위치 선택 모달 열기
+    setSelectedUnit(selectedUnit);
+    setIsLocationModalOpen(true);
+    setIsModalOpen(false); // 기존 모달 닫기
+  };
+  
+  // 취소 함수
+  const handleCancelProduction = () => {
+    if (typeof window === 'undefined') return;
+    
+    localStorage.removeItem('current_unit_production');
+    toast.success('유닛 생산이 취소되었습니다.');
+    
+    // UI 리렌더링을 위한 이벤트 발생
+    window.dispatchEvent(new Event('storage'));
+  };
+  
+  // 위치 선택 후 유닛 생산 최종 확정
+  const handleStartProduction = (tile: HexTile) => {
+    if (!selectedUnit) {
+      toast.error('선택한 유닛 정보가 없습니다.');
+      return;
+    }
+    
     setLoadingProduction(true);
     try {
-      // 선택한 유닛 정보 가져오기
-      const selectedUnit = unitTemplates.find(unit => unit.id === unitId);
-      if (!selectedUnit) {
-        toast.error('선택한 유닛 정보를 찾을 수 없습니다.');
-        return;
-      }
+      // 재화 차감 (실제로는 서버에서 처리될 예정)
+      const unitCost = selectedUnit.cost || 0;
+      const currentProduction = gameState?.resources?.production || 0;
+      const newProduction = currentProduction - unitCost;
       
-      // 로컬 스토리지에 생산 정보 저장
+      // 로컬 스토리지에 생산 정보 저장 (위치 정보 포함)
       const productionData = {
-        unitId,
+        unitId: selectedUnit.id,
         unitName: selectedUnit.name,
         unitCategory: selectedUnit.category,
         turnsLeft: selectedUnit.buildTime,
         startedAt: new Date().toISOString(),
+        location: {
+          q: tile.q,
+          r: tile.r,
+          s: tile.s
+        },
+        cost: unitCost
       };
       
       localStorage.setItem('current_unit_production', JSON.stringify(productionData));
+      
+      // 재화 차감 정보 저장 (실제로는 턴 종료 시 서버에서 처리)
+      if (gameState && gameState.resources) {
+        const updatedResources = {
+          ...gameState.resources,
+          production: newProduction
+        };
+        localStorage.setItem('temp_resources', JSON.stringify(updatedResources));
+      }
+      
       toast.success(`${selectedUnit.name} 생산을 시작했습니다. (${selectedUnit.buildTime}턴 소요)`);
       
       // 상태 업데이트
-      setIsModalOpen(false);
+      setIsLocationModalOpen(false);
+      setSelectedUnit(null);
+      setSelectedTile(null);
       
-      // 서버에 정보 전송 (실제 API가 연결되면 사용)
-      try {
-        const response = await gameService.startUnitProduction(1, unitId);
-        if (response && response.status === 'success') {
-          // 서버에서 생산 성공 응답 시 로컬 스토리지 유지
-          console.log('유닛 생산 시작 성공:', response);
-        }
-      } catch (err) {
-        console.error('API 호출 중 오류가 발생했습니다.', err);
-        // API 실패해도 로컬 스토리지 유지하여 UX 연속성 확보
-      }
+      // 턴 종료시 API로 전송하도록 수정
+      console.log('유닛 생산 정보가 저장되었습니다. 턴 종료시 서버로 전송됩니다:', productionData);
     } catch (err) {
       console.error('유닛 생산 시작 실패:', err);
       toast.error('유닛 생산 시작에 실패했습니다.');
@@ -224,7 +279,17 @@ const UnitsTab: React.FC = () => {
           {/* 현재 생산 중인 유닛 표시 */}
           {currentProduction && (
             <div className="mb-6 bg-slate-800 p-4 rounded-lg border border-slate-700">
-              <h3 className="text-lg font-semibold mb-3">현재 생산 중</h3>
+              <div className="flex justify-between items-start">
+                <h3 className="text-lg font-semibold mb-3">현재 생산 중</h3>
+                <Button 
+                  size="sm" 
+                  variant="destructive" 
+                  onClick={handleCancelProduction}
+                >
+                  <X size={16} />
+                  취소
+                </Button>
+              </div>
               <div className="flex items-center mb-2">
                 <div className="w-10 h-10 rounded-full bg-slate-600 flex items-center justify-center mr-3">
                   {currentProduction.unitCategory === 'Melee' ? '⚔️' : 
@@ -241,7 +306,15 @@ const UnitsTab: React.FC = () => {
                   style={{ width: `${Math.min(100, Math.max(0, (1 - Number(currentProduction.turnsLeft) / (unitTemplates.find(u => u.id === Number(currentProduction.unitId))?.buildTime || 1)) * 100))}%` }}
                 ></div>
               </div>
-              <p className="text-xs text-right mt-1 text-slate-400">{currentProduction.turnsLeft}턴 남음</p>
+              <div className="flex justify-between text-xs mt-1">
+                <p className="text-slate-400">{currentProduction.turnsLeft}턴 남음</p>
+                
+                {currentProduction.location && (
+                  <p className="text-slate-400">
+                    배치 위치: ({currentProduction.location.q}, {currentProduction.location.r})
+                  </p>
+                )}
+              </div>
             </div>
           )}
 
@@ -369,7 +442,7 @@ const UnitsTab: React.FC = () => {
                           </p>
                         </div>
                         <Button
-                          onClick={() => handleStartProduction(unit.id)}
+                          onClick={() => handleConfirmProduction(unit.id)}
                           disabled={loadingProduction}
                           className="w-full mt-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-700 disabled:text-slate-400"
                         >
@@ -387,6 +460,65 @@ const UnitsTab: React.FC = () => {
                     className="border-slate-700 text-slate-300 hover:bg-slate-800"
                   >
                     취소
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 위치 선택 모달 */}
+          {isLocationModalOpen && selectedUnit && (
+            <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">
+              <div className="bg-slate-900 rounded-lg p-6 w-full max-w-4xl h-[80vh] overflow-auto border border-slate-700 shadow-xl">
+                <div className="flex justify-between items-center mb-6">
+                  <h2 className="text-xl font-bold text-white">유닛 배치 위치 선택</h2>
+                  <button 
+                    onClick={() => setIsLocationModalOpen(false)}
+                    className="text-slate-400 hover:text-white transition-colors"
+                  >
+                    ✕
+                  </button>
+                </div>
+                
+                <div className="mb-4">
+                  <p className="text-slate-300">
+                    <span className="font-bold">{selectedUnit.name}</span> 유닛을 배치할 위치를 선택하세요.
+                  </p>
+                  <p className="text-sm text-slate-400 mt-1">
+                    도시 주변 타일에만 배치할 수 있습니다. (이동력: {selectedUnit.movement})
+                  </p>
+                </div>
+                
+                <div className="bg-slate-800 p-4 rounded-md mb-4 h-[60vh] flex items-center justify-center">
+                  <div className="w-full h-full flex flex-col items-center justify-center">
+                    {/* HexMap을 위치 선택용으로 표시 */}
+                    <div className="w-full h-96 mb-4">
+                      <HexMap
+                        hexagons={mapData}
+                        selectedTile={selectedTile}
+                        onTileClick={(tile) => setSelectedTile(tile)}
+                      />
+                    </div>
+                    <p className="text-slate-400 text-center mt-2">
+                      원하는 위치의 타일을 클릭하여 유닛 배치 위치를 선택하세요.
+                    </p>
+                  </div>
+                </div>
+                
+                <div className="flex justify-end space-x-3">
+                  <Button 
+                    variant="outline" 
+                    onClick={() => setIsLocationModalOpen(false)}
+                    className="border-slate-700 text-slate-300 hover:bg-slate-800"
+                  >
+                    취소
+                  </Button>
+                  <Button 
+                    disabled={!selectedTile || loadingProduction}
+                    onClick={() => selectedTile && handleStartProduction(selectedTile)}
+                    className="bg-indigo-600 hover:bg-indigo-700"
+                  >
+                    {loadingProduction ? <Spinner className="h-4 w-4" /> : '위치 확정'}
                   </Button>
                 </div>
               </div>

@@ -172,11 +172,21 @@ const HexMap: React.FC<HexMapProps> = ({
       
       // 시야가 있는 타일에만 유닛과 도시 표시
       if (tile.exploration === 'visible') {
-        if (tile.unit) {
+         if (tile.unit) {
           drawUnit(ctx, tile.unit, position, scale);
         }
         if (tile.city) {
+          // 도시가 있으면 도시를 더 강조해서 그림 (예: 테두리, 오버레이 등)
           drawCity(ctx, tile.city, position, scale);
+          // 도시 강조: 원형 테두리 추가
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(position.x, position.y, 22 * scale, 0, 2 * Math.PI);
+          ctx.strokeStyle = '#FFD700'; // 금색
+          ctx.lineWidth = 3 * scale;
+          ctx.globalAlpha = 0.7;
+          ctx.stroke();
+          ctx.restore();
         }
       } 
       // 탐색된 타일에는 도시만 표시 (유닛은 표시하지 않음)
@@ -251,7 +261,12 @@ const HexMap: React.FC<HexMapProps> = ({
 
     const hex = getHexAtPoint(x, y, hexagons, offset, scale);
     if (hex) {
-      onTileClick(hex);
+      // 도시가 있는 타일을 클릭하면 onCityClick 호출
+      if (hex.city && onCityClick) {
+        onCityClick(hex.city);
+      } else {
+        onTileClick(hex);
+      }
     }
   };
   
